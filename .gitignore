@@ -72,3 +72,6 @@ fabric.properties
 
 # Python compiled file
 *.pyc
+
+# Environment variables (local config)
+.env
