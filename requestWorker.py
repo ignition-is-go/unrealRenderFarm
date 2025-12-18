@@ -8,6 +8,7 @@ load_dotenv()
 
 import logging
 import os
+import socket
 import subprocess
 import time
 
@@ -21,7 +22,8 @@ LOGGER = logging.getLogger(__name__)
 MODULE_PATH = os.path.dirname(os.path.abspath(__file__))
 
 # render worker specific configuration (via environment variables)
-WORKER_NAME = os.environ.get('WORKER_NAME', 'RENDER_MACHINE_01')
+# Defaults to hostname if WORKER_NAME not set (useful for cloned VMs)
+WORKER_NAME = os.environ.get('WORKER_NAME', socket.gethostname())
 UNREAL_EXE = os.environ.get('UNREAL_EXE', '')
 UNREAL_PROJECT = os.environ.get('UNREAL_PROJECT', '')
 
@@ -88,30 +90,23 @@ if __name__ == '__main__':
     LOGGER.info('Unreal Editor: %s', UNREAL_EXE)
     LOGGER.info('Project: %s', UNREAL_PROJECT)
     while True:
-        rrequests = client.get_all_requests()
+        client.send_heartbeat(WORKER_NAME, status='idle')
+        rrequests = client.get_all_requests() or []
         uids = [rrequest.uid for rrequest in rrequests
                 if rrequest.worker == WORKER_NAME and
                 rrequest.status == renderRequest.RenderStatus.ready_to_start]
 
-        # render blocks main loop
         for uid in uids:
             LOGGER.info('rendering job %s', uid)
+            client.send_heartbeat(WORKER_NAME, status='rendering')
 
-            rrequest = renderRequest.RenderRequest.from_db(uid)
+            rrequest = client.get_request(uid)
             output = render(
                 uid,
                 rrequest.umap_path,
                 rrequest.useq_path,
                 rrequest.uconfig_path
             )
-
-            # for debugging
-            # for line in str(output).split(r'\r\n'):
-            #     if 'LogPython' in line:
-            #         print(line)
-
             LOGGER.info("finished rendering job %s", uid)
 
-        # check assigned job every 10 sec after previous job has finished
         time.sleep(10)
-        LOGGER.info('current job(s) finished, searching for new job(s)')

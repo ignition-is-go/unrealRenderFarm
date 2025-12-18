@@ -81,6 +81,22 @@ def remove_request(uid):
     return renderRequest.RenderRequest.from_dict(response.json())
 
 
+def send_heartbeat(worker_name, status='idle'):
+    """
+    Send heartbeat to server to register worker
+
+    :param worker_name: str. worker name (hostname)
+    :param status: str. worker status (idle/rendering)
+    """
+    try:
+        requests.post(
+            SERVER_API_URL + '/worker/heartbeat',
+            json={'worker_name': worker_name, 'status': status}
+        )
+    except requests.exceptions.ConnectionError:
+        LOGGER.error('failed to send heartbeat to server %s', SERVER_API_URL)
+
+
 def update_request(uid, progress=0, status='', time_estimate=''):
     """
     Call a 'PUT' method to update a render request on the server

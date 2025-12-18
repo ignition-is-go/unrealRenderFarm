@@ -19,7 +19,12 @@ from util import renderRequest
 MODULE_PATH = os.path.dirname(os.path.abspath(__file__))
 HTML_FOLDER = os.path.join(MODULE_PATH, 'html')
 
+logging.basicConfig(level=logging.INFO)
 LOGGER = logging.getLogger(__name__)
+
+# Worker registry: {worker_name: {status, last_seen, current_job}}
+WORKERS = {}
+WORKER_TIMEOUT = 30  # seconds before worker considered offline
 
 # region HTTP REST API
 app = Flask(__name__)
@@ -114,7 +119,53 @@ def update_request(uid):
     return rr.to_dict()
 
 
+# Worker API
+
+@app.post('/api/worker/heartbeat')
+def worker_heartbeat():
+    """
+    Worker heartbeat - registers worker and updates last seen time
+    """
+    data = request.get_json(force=True)
+    worker_name = data.get('worker_name')
+    if not worker_name:
+        return {'error': 'worker_name required'}, 400
+
+    WORKERS[worker_name] = {
+        'last_seen': time.time(),
+        'status': data.get('status', 'idle')
+    }
+    LOGGER.info('heartbeat from %s', worker_name)
+    return {'ok': True}
+
+
+@app.get('/api/workers')
+def get_workers():
+    """
+    Get all registered workers and their status
+    """
+    now = time.time()
+    workers = {}
+    for name, info in WORKERS.items():
+        workers[name] = {
+            'status': info['status'],
+            'online': (now - info['last_seen']) < WORKER_TIMEOUT
+        }
+    return {'workers': workers}
+
+
 # endregion
+
+
+def get_available_worker():
+    """
+    Get an available worker (online and idle)
+    """
+    now = time.time()
+    for name, info in WORKERS.items():
+        if (now - info['last_seen']) < WORKER_TIMEOUT:
+            return name
+    return None
 
 
 def new_request_trigger(rrequest):
@@ -124,12 +175,12 @@ def new_request_trigger(rrequest):
     if rrequest.worker:
         return
 
-    # currently, as a test, assigns all job to one worker
-    worker = 'RENDER_MACHINE_01'
-    assign_request(rrequest, worker)
+    worker = get_available_worker()
+    if not worker:
+        LOGGER.warning('no workers available for job %s', rrequest.uid)
+        return
 
-    # if multiple jobs came in at once, interval between each assignment
-    time.sleep(4)
+    assign_request(rrequest, worker)
     LOGGER.info('assigned job %s to %s', rrequest.uid, worker)
 
 
