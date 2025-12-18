@@ -23,7 +23,6 @@ LOGGER = logging.getLogger(__name__)
 
 # region HTTP REST API
 app = Flask(__name__)
-FLASK_EXE = r'E:\Epic\UE_5.0\Engine\Binaries\ThirdParty\Python3\Win64\Scripts\flask.exe'
 
 
 @app.route('/')
@@ -146,23 +145,4 @@ def assign_request(rrequest, worker):
 
 
 if __name__ == '__main__':
-    import subprocess
-    import os
-
-    env = os.environ.copy()
-    env['PYTHONPATH'] += os.pathsep + MODULE_PATH
-
-    command = [
-        FLASK_EXE,
-        '--app',
-        'requestManager.py',
-        '--debug',  # debug mode to auto reload script changes
-        'run',
-        '-h',
-        'localhost',
-        '-p',
-        '5000'
-    ]
-
-    proc = subprocess.Popen(command, env=env)
-    LOGGER.info(proc.communicate())
+    app.run(host='0.0.0.0', port=5000, debug=True)

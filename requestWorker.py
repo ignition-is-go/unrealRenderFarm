@@ -18,10 +18,10 @@ LOGGER = logging.getLogger(__name__)
 
 MODULE_PATH = os.path.dirname(os.path.abspath(__file__))
 
-# render worker specific configuration
-WORKER_NAME = 'RENDER_MACHINE_01'
-UNREAL_EXE = r'E:\Epic\UE_5.0\Engine\Binaries\Win64\UnrealEditor.exe'
-UNREAL_PROJECT = r"E:\Epic\UnrealProjects\SequencerTest\SequencerTest.uproject"
+# render worker specific configuration (via environment variables)
+WORKER_NAME = os.environ.get('WORKER_NAME', 'RENDER_MACHINE_01')
+UNREAL_EXE = os.environ.get('UNREAL_EXE', '')
+UNREAL_PROJECT = os.environ.get('UNREAL_PROJECT', '')
 
 
 def render(uid, umap_path, useq_path, uconfig_path):
@@ -74,7 +74,17 @@ def render(uid, umap_path, useq_path, uconfig_path):
 
 
 if __name__ == '__main__':
+    # Validate required environment variables
+    if not UNREAL_EXE:
+        LOGGER.error('UNREAL_EXE environment variable not set')
+        raise SystemExit(1)
+    if not UNREAL_PROJECT:
+        LOGGER.error('UNREAL_PROJECT environment variable not set')
+        raise SystemExit(1)
+
     LOGGER.info('Starting render worker %s', WORKER_NAME)
+    LOGGER.info('Unreal Editor: %s', UNREAL_EXE)
+    LOGGER.info('Project: %s', UNREAL_PROJECT)
     while True:
         rrequests = client.get_all_requests()
         uids = [rrequest.uid for rrequest in rrequests

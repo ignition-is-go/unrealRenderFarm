@@ -4,6 +4,8 @@ Client request utility functions
 
 
 import logging
+import os
+
 import requests
 
 from . import renderRequest
@@ -11,7 +13,7 @@ from . import renderRequest
 
 LOGGER = logging.getLogger(__name__)
 
-SERVER_URL = 'http://127.0.0.1:5000'
+SERVER_URL = os.environ.get('RENDER_SERVER_URL', 'http://127.0.0.1:5000')
 SERVER_API_URL = SERVER_URL + '/api'
 
 
