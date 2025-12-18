@@ -3,6 +3,8 @@ Client to work/process render request, which launches executor locally and
 updates status to the server
 """
 
+from dotenv import load_dotenv
+load_dotenv()
 
 import logging
 import os
