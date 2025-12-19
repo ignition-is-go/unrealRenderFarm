@@ -260,7 +260,10 @@ def remove_db(uid):
 
     :param uid: str. request uid
     """
-    os.remove(os.path.join(DATABASE, '{}.json'.format(uid)))
+    try:
+        os.remove(os.path.join(DATABASE, '{}.json'.format(uid)))
+    except FileNotFoundError:
+        pass
 
 
 def remove_all():

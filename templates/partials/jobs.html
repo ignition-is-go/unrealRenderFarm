@@ -36,7 +36,8 @@
                     {% else %}
                     <button class="btn-delete"
                             hx-delete="/api/delete/{{ job.uid }}"
-                            hx-swap="none">Delete</button>
+                            hx-target="closest tr"
+                            hx-swap="delete">Delete</button>
                     {% endif %}
                 </td>
             </tr>
