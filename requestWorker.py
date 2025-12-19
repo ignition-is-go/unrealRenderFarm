@@ -8,8 +8,10 @@ load_dotenv()
 
 import logging
 import os
+import re
 import socket
 import subprocess
+import threading
 import time
 
 from util import client
@@ -26,6 +28,27 @@ MODULE_PATH = os.path.dirname(os.path.abspath(__file__))
 WORKER_NAME = os.environ.get('WORKER_NAME', socket.gethostname())
 UNREAL_EXE = os.environ.get('UNREAL_EXE', '')
 UNREAL_PROJECT = os.environ.get('UNREAL_PROJECT', '')
+
+
+def log_output(pipe, prefix='UE'):
+    """Read and log output from subprocess pipe"""
+    # Only show our executor logs
+    patterns = [
+        r'=== MyExecutor',
+        r'HTTP PUT',
+        r'HTTP response',
+        r'SERVER_API_URL',
+        r'Engine Warm Up Frame',
+        r'Progress:.*%',
+        r'Render finished',
+    ]
+    pattern = re.compile('|'.join(patterns))
+
+    for line in iter(pipe.readline, ''):
+        line = line.rstrip()
+        if pattern.search(line):
+            LOGGER.info('[%s] %s', prefix, line)
+    pipe.close()
 
 
 def render(uid, umap_path, useq_path, uconfig_path):
@@ -49,12 +72,11 @@ def render(uid, umap_path, useq_path, uconfig_path):
         "-LevelSequence={}".format(useq_path),
         "-MoviePipelineConfig={}".format(uconfig_path),
 
-        # required
+        # use custom Python executor
         "-game",
         "-MoviePipelineLocalExecutorClass=/Script/MovieRenderPipelineCore.MoviePipelinePythonHostExecutor",
         "-ExecutorPythonClass=/Engine/PythonTypes.MyExecutor",
 
-        # render preview
         "-windowed",
         "-resX=1280",
         "-resY=720",
@@ -65,12 +87,23 @@ def render(uid, umap_path, useq_path, uconfig_path):
     ]
     env = os.environ.copy()
     env["UE_PYTHONPATH"] = MODULE_PATH.replace('\\', '/')
+
+    LOGGER.info("UE_PYTHONPATH: %s", env["UE_PYTHONPATH"])
+    LOGGER.info("Command: %s", ' '.join(command))
+
     proc = subprocess.Popen(
         command,
         stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        env=env
+        stderr=subprocess.STDOUT,
+        env=env,
+        text=True,
+        bufsize=1
     )
+
+    # Start thread to read and log output
+    log_thread = threading.Thread(target=log_output, args=(proc.stdout,))
+    log_thread.daemon = True
+    log_thread.start()
 
     # Poll for completion or cancellation
     while proc.poll() is None:
@@ -86,6 +119,7 @@ def render(uid, umap_path, useq_path, uconfig_path):
             return False
         time.sleep(2)
 
+    log_thread.join(timeout=2)
     return True
 
 
@@ -121,6 +155,8 @@ if __name__ == '__main__':
             )
             if completed:
                 LOGGER.info("finished rendering job %s", uid)
+                # Update server with finished status
+                client.update_request(uid, progress=100, time_estimate='N/A', status='finished')
             else:
                 LOGGER.info("job %s was cancelled", uid)
 

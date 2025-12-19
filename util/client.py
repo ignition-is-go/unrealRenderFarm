@@ -108,13 +108,11 @@ def update_request(uid, progress=0, status='', time_estimate=''):
     :return: renderRequest.RenderRequest. updated render request object
     """
     try:
+        # Server expects plain text body: "progress;time_estimate;status"
+        body = '{};{};{}'.format(progress, time_estimate, status)
         response = requests.put(
             SERVER_API_URL+'/put/{}'.format(uid),
-            params={
-                'progress': progress,
-                'status': status,
-                'time_estimate': time_estimate
-            }
+            data=body
         )
     except requests.exceptions.ConnectionError:
         LOGGER.error('failed to connect to server %s', SERVER_API_URL)

@@ -1,204 +1,155 @@
 """
-My custom render executor for remote/distributed rendering
+MRQ executor for command-line rendering with server callbacks
 """
 
 import os
-import time
 import unreal
 
 
 # Server URL from environment variable
 SERVER_API_URL = os.environ.get('RENDER_SERVER_URL', 'http://127.0.0.1:5000') + '/api'
+unreal.log("=== MyExecutor module loaded ===")
+unreal.log("  SERVER_API_URL: {}".format(SERVER_API_URL))
 
-# Status constants
-STATUS_IN_PROGRESS = 'in progress'
-STATUS_FINISHED = 'finished'
+
+def fix_asset_path(path):
+    """
+    Fix Unreal asset paths to include both package and asset name.
+
+    WRONG:  /Game/Path/Asset         (loads Package, not the asset!)
+    RIGHT:  /Game/Path/Asset.Asset   (loads the actual asset)
+
+    To get the correct path in Unreal Editor: Right-click asset -> "Copy Object Path"
+    """
+    if path and '.' not in path.split('/')[-1]:
+        asset_name = path.split('/')[-1]
+        return "{}.{}".format(path, asset_name)
+    return path
 
 
 @unreal.uclass()
 class MyExecutor(unreal.MoviePipelinePythonHostExecutor):
 
     pipeline = unreal.uproperty(unreal.MoviePipeline)
+    queue = unreal.uproperty(unreal.MoviePipelineQueue)
     job_id = unreal.uproperty(unreal.Text)
 
     def _post_init(self):
-        """
-        The Executor constructor different from the standard __init__()
-
-        Good place to register http callback function
-        """
         self.pipeline = None
         self.queue = None
         self.job_id = None
 
+        # Register HTTP response callback
         self.http_response_recieved_delegate.add_function_unique(
             self,
-            "on_http_response_received"
+            "on_http_response"
         )
-
-    def parse_argument(self):
-        """
-        Parse commandline arguments that initiated the Executor class
-        """
-        (cmd_tokens, cmd_switches, cmd_parameters) = unreal.SystemLibrary.\
-            parse_command_line(unreal.SystemLibrary.get_command_line())
-
-        self.map_path = cmd_tokens[0]
-        self.job_id = cmd_parameters['JobId']
-        self.seq_path = cmd_parameters['LevelSequence']
-        self.preset_path = cmd_parameters['MoviePipelineConfig']
-
-    def add_job(self):
-        """
-        Add job to pipeline queue based off commandline arguments
-
-        :return: unreal.MoviePipelineExecutorJob. new render job
-        """
-        job = self.queue.allocate_new_job(unreal.MoviePipelineExecutorJob)
-        job.map = unreal.SoftObjectPath(self.map_path)
-        job.sequence = unreal.SoftObjectPath(self.seq_path)
-
-        preset_path = unreal.SoftObjectPath(self.preset_path)
-        u_preset = unreal.SystemLibrary.\
-            conv_soft_obj_path_to_soft_obj_ref(preset_path)
-        job.set_configuration(u_preset)
-
-        return job
 
     @unreal.ufunction(override=True)
     def execute_delayed(self, queue):
-        """
-        Function called once level has loaded
+        # Parse commandline
+        (cmd_tokens, cmd_switches, cmd_parameters) = unreal.SystemLibrary.\
+            parse_command_line(unreal.SystemLibrary.get_command_line())
 
-        Good place to parse commandline arguments
-        We also created a new pipeline and new queue and registered pipeline
-        callback
+        map_path = fix_asset_path(cmd_tokens[0])
+        seq_path = fix_asset_path(cmd_parameters.get('LevelSequence', ''))
+        preset_path = fix_asset_path(cmd_parameters.get('MoviePipelineConfig', ''))
+        self.job_id = cmd_parameters.get('JobId', '')
 
-        :param queue: unreal.MoviePipelineQueue.
-                      optional. if we want this argument to be valid, we
-                      can pass a path to an unreal queue asset via
-                      '-MoviePipelineConfig' commandline argument
-        """
-        self.parse_argument()
+        unreal.log("=== MyExecutor: Job {} ===".format(self.job_id))
+        unreal.log("  Map: {}".format(map_path))
+        unreal.log("  Sequence: {}".format(seq_path))
+        unreal.log("  Config: {}".format(preset_path))
 
-        # render pipeline creation
+        # Load preset
+        preset_soft = unreal.SoftObjectPath(preset_path)
+        u_preset = unreal.SystemLibrary.conv_soft_obj_path_to_soft_obj_ref(preset_soft)
+
+        if not u_preset:
+            unreal.log_error("FAILED to load preset: {}".format(preset_path))
+            self.send_status_update(0, 'N/A', 'error')
+            return
+
+        # Initialize pipeline
         self.pipeline = unreal.new_object(
             self.target_pipeline_class,
             outer=self.get_last_loaded_world(),
             base_type=unreal.MoviePipeline
         )
-        self.pipeline.on_movie_pipeline_finished_delegate.add_function_unique(
-            self,
-            "on_job_finished"
-        )
+
+        # Initialize queue with single job
+        self.queue = unreal.new_object(unreal.MoviePipelineQueue, outer=self)
+        job = self.queue.allocate_new_job(unreal.MoviePipelineExecutorJob)
+        job.map = unreal.SoftObjectPath(map_path)
+        job.sequence = unreal.SoftObjectPath(seq_path)
+        job.set_configuration(u_preset)
+
+        # Register finished callback
         self.pipeline.on_movie_pipeline_work_finished_delegate.add_function_unique(
-            self,
-            "on_pipeline_finished"
+            self, "on_movie_pipeline_finished"
         )
 
-        # create our own queue for single job handling
-        self.queue = unreal.new_object(unreal.MoviePipelineQueue, outer=self)
-        job = self.add_job()
         self.pipeline.initialize(job)
+        unreal.log("Pipeline initialized, rendering...")
+
+        # Send initial status
+        self.send_status_update(0, 'Starting...', 'in progress')
+
+    @unreal.ufunction(ret=None, params=[unreal.MoviePipelineOutputData])
+    def on_movie_pipeline_finished(self, results):
+        """Called when render is complete"""
+        unreal.log("Render finished! Success: {}".format(results.success))
+        self.send_status_update(100, 'N/A', 'finished')
+        self.pipeline = None
+        self.on_executor_finished_impl()
+
+    @unreal.ufunction(override=True)
+    def is_rendering(self):
+        """Required override"""
+        return self.pipeline is not None
 
     @unreal.ufunction(override=True)
     def on_begin_frame(self):
-        """
-        Callback function on every frame
-
-        Count down progress and time estimate, and send http request
-        to update job status
-        """
+        """Called every frame - send progress updates"""
         super(MyExecutor, self).on_begin_frame()
 
         if not self.pipeline:
             return
 
-        status = STATUS_IN_PROGRESS
-        progress = 100 * unreal.MoviePipelineLibrary.\
-            get_completion_percentage(self.pipeline)
-        time_estimate = unreal.MoviePipelineLibrary.\
-            get_estimated_time_remaining(self.pipeline)
+        # Get progress
+        progress = 100 * unreal.MoviePipelineLibrary.get_completion_percentage(self.pipeline)
 
-        if not time_estimate:
-            time_estimate = unreal.Timespan.MAX_VALUE
+        # Get time estimate
+        time_estimate = unreal.MoviePipelineLibrary.get_estimated_time_remaining(self.pipeline)
+        if time_estimate:
+            days, hours, minutes, seconds, _ = time_estimate.to_tuple()
+            time_str = '{}h:{}m:{}s'.format(hours, minutes, seconds)
+        else:
+            time_str = 'Calculating...'
 
-        days, hours, minutes, seconds, _ = time_estimate.to_tuple()
-        time_estimate = '{}h:{}m:{}s'.format(hours, minutes, seconds)
-
-        self.send_http_request(
-            '{}/put/{}'.format(SERVER_API_URL, self.job_id),
-            "PUT",
-            '{};{};{}'.format(progress, time_estimate, status),
-            unreal.Map(str, str)
-        )
+        # Log engine warm up vs rendering
+        if progress == 0:
+            current, total = unreal.MoviePipelineBlueprintLibrary.get_engine_warm_up_frame_count(self.pipeline, 0)
+            warmup_str = "Warm Up {}/{}".format(current, total)
+            unreal.log("Engine Warm Up Frame {}/{}".format(current, total))
+            self.send_status_update(progress, warmup_str, 'in progress')
+        else:
+            unreal.log("Progress: {:.1f}% ETA: {}".format(progress, time_str))
+            self.send_status_update(progress, time_str, 'in progress')
 
     @unreal.ufunction(ret=None, params=[int, int, str])
-    def on_http_response_received(self, index, code, message):
-        """
-        Http response received callback
+    def on_http_response(self, index, code, message):
+        """HTTP response callback"""
+        unreal.log("HTTP response: {} {}".format(code, message[:50] if message else ""))
 
-        :param index: int. response index that matches the request index
-        :param code: int. http response code
-        :param message: str. http response message
-        """
-        if code == 200:
-            unreal.log(message)
-        else:
-            unreal.log_error('something wrong with the server!!')
+    def send_status_update(self, progress, time_estimate, status):
+        """Send status update to render server"""
+        if not self.job_id:
+            unreal.log_warning("send_status_update: no job_id set!")
+            return
 
-    @unreal.ufunction(override=True)
-    def is_rendering(self):
-        """
-        Override. whether or not the Render Local/Remote buttons are loacked
-        in the editor executor
+        url = '{}/put/{}'.format(SERVER_API_URL, self.job_id)
+        body = '{};{};{}'.format(progress, time_estimate, status)
 
-        :return: bool
-        """
-        return False
-
-    @unreal.ufunction(ret=None, params=[unreal.MoviePipeline, bool])
-    def on_job_finished(self, pipeline, is_errored):
-        """
-        Render job finished callback
-
-        Since we are process only one job, we update server when it has completed
-        and then call on_executor_finished_impl() to end the whole queue
-
-        :param pipeline: unreal.MoviePipeline. pipeline owning the job
-        :param is_errored: bool. whether the pipeline errors out
-        """
-        self.pipeline = None
-        unreal.log("Finished rendering movie!")
-        self.on_executor_finished_impl()
-
-        time.sleep(1)
-
-        # update to server
-        progress = 100
-        time_estimate = 'N/A'
-        status = STATUS_FINISHED
-        self.send_http_request(
-            '{}/put/{}'.format(SERVER_API_URL, self.job_id),
-            "PUT",
-            '{};{};{}'.format(progress, time_estimate, status),
-            unreal.Map(str, str)
-        )
-
-    @unreal.ufunction(ret=None, params=[unreal.MoviePipelineOutputData])
-    def on_pipeline_finished(self, results):
-        """
-        Render pipeline/queue finished callback
-
-        :param results: unreal.MoviePipelineOutputData. extensive results
-                        of the pipeline output
-        """
-        output_data = results
-        if output_data.success:
-            for shot_data in output_data.shot_data:
-                render_pass_data = shot_data.render_pass_data
-                for k, v in render_pass_data.items():
-                    if k.name == 'FinalImage':
-                        outputs = v.file_paths
-                        # get all final output images
-                        # unreal.log(outputs)
+        unreal.log("HTTP PUT {} -> {}".format(url, body))
+        self.send_http_request(url, "PUT", body, unreal.Map(str, str))
