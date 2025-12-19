@@ -32,16 +32,13 @@ def render(uid, umap_path, useq_path, uconfig_path):
     """
     Render a job locally using the custom executor (myExecutor.py)
 
-    Note:
-    I only listed the necessary arguments here,
-    we can easily add custom commandline flags like '-StartFrame', '-FrameRate' etc.
-    but we also need to implement in the MyExecutor class as well
+    Polls for cancellation during render and kills the process if cancelled.
 
     :param uid: str. render request uid
     :param umap_path: str. Unreal path to the map/level asset
     :param useq_path: str. Unreal path to the sequence asset
     :param uconfig_path: str. Unreal path to the preset/config asset
-    :return: (str. str). output and error messages
+    :return: bool. True if completed, False if cancelled
     """
     command = [
         UNREAL_EXE,
@@ -74,7 +71,22 @@ def render(uid, umap_path, useq_path, uconfig_path):
         stderr=subprocess.PIPE,
         env=env
     )
-    return proc.communicate()
+
+    # Poll for completion or cancellation
+    while proc.poll() is None:
+        # Check if job was cancelled
+        rrequest = client.get_request(uid)
+        if rrequest and rrequest.status == renderRequest.RenderStatus.cancelled:
+            LOGGER.info('job %s cancelled, killing render process', uid)
+            proc.terminate()
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+            return False
+        time.sleep(2)
+
+    return True
 
 
 if __name__ == '__main__':
@@ -101,12 +113,15 @@ if __name__ == '__main__':
             client.send_heartbeat(WORKER_NAME, status='rendering')
 
             rrequest = client.get_request(uid)
-            output = render(
+            completed = render(
                 uid,
                 rrequest.umap_path,
                 rrequest.useq_path,
                 rrequest.uconfig_path
             )
-            LOGGER.info("finished rendering job %s", uid)
+            if completed:
+                LOGGER.info("finished rendering job %s", uid)
+            else:
+                LOGGER.info("job %s was cancelled", uid)
 
         time.sleep(10)
