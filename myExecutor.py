@@ -2,11 +2,17 @@
 My custom render executor for remote/distributed rendering
 """
 
+import os
 import time
 import unreal
 
-from util import client
-from util import renderRequest
+
+# Server URL from environment variable
+SERVER_API_URL = os.environ.get('RENDER_SERVER_URL', 'http://127.0.0.1:5000') + '/api'
+
+# Status constants
+STATUS_IN_PROGRESS = 'in progress'
+STATUS_FINISHED = 'finished'
 
 
 @unreal.uclass()
@@ -108,7 +114,7 @@ class MyExecutor(unreal.MoviePipelinePythonHostExecutor):
         if not self.pipeline:
             return
 
-        status = renderRequest.RenderStatus.in_progress
+        status = STATUS_IN_PROGRESS
         progress = 100 * unreal.MoviePipelineLibrary.\
             get_completion_percentage(self.pipeline)
         time_estimate = unreal.MoviePipelineLibrary.\
@@ -121,7 +127,7 @@ class MyExecutor(unreal.MoviePipelinePythonHostExecutor):
         time_estimate = '{}h:{}m:{}s'.format(hours, minutes, seconds)
 
         self.send_http_request(
-            '{}/put/{}'.format(client.SERVER_API_URL, self.job_id),
+            '{}/put/{}'.format(SERVER_API_URL, self.job_id),
             "PUT",
             '{};{};{}'.format(progress, time_estimate, status),
             unreal.Map(str, str)
@@ -171,9 +177,9 @@ class MyExecutor(unreal.MoviePipelinePythonHostExecutor):
         # update to server
         progress = 100
         time_estimate = 'N/A'
-        status = renderRequest.RenderStatus.finished
+        status = STATUS_FINISHED
         self.send_http_request(
-            '{}/put/{}'.format(client.SERVER_API_URL, self.job_id),
+            '{}/put/{}'.format(SERVER_API_URL, self.job_id),
             "PUT",
             '{};{};{}'.format(progress, time_estimate, status),
             unreal.Map(str, str)
