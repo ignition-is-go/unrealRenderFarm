@@ -9,6 +9,7 @@
                 <th>Owner</th>
                 <th>Worker</th>
                 <th>Status</th>
+                <th>Warmup</th>
                 <th>Progress</th>
                 <th>Time Estimate</th>
                 <th>Actions</th>
@@ -22,6 +23,13 @@
                 <td>{{ job.owner }}</td>
                 <td>{{ job.worker or '-' }}</td>
                 <td>{{ job.status }}</td>
+                <td>
+                    {% if job.warmup_total > 0 %}
+                    {{ job.warmup_current }}/{{ job.warmup_total }}
+                    {% else %}
+                    -
+                    {% endif %}
+                </td>
                 <td>
                     <div class="progressContainer">
                         <div class="progressBar" style="width: {{ job.progress }}%">{{ job.progress }}%</div>

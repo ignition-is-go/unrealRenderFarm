@@ -59,7 +59,9 @@ class RenderRequest(object):
             start_frame=0,
             end_frame=0,
             time_estimate='',
-            progress=0
+            progress=0,
+            warmup_current=0,
+            warmup_total=0
     ):
         """
         Initialization
@@ -85,6 +87,8 @@ class RenderRequest(object):
         :param end_frame: int. custom render end frame
         :param time_estimate: str. render time remaining estimate
         :param progress: int. render progress [0 to 100]
+        :param warmup_current: int. current engine warmup frame
+        :param warmup_total: int. total engine warmup frames
         """
         self.uid = uid or str(uuid.uuid4())[:4]
         self.name = name
@@ -108,6 +112,8 @@ class RenderRequest(object):
         self.length = self.end_frame - self.start_frame
         self.time_estimate = time_estimate
         self.progress = progress
+        self.warmup_current = warmup_current
+        self.warmup_total = warmup_total
 
     @classmethod
     def from_db(cls, uid):
@@ -160,6 +166,8 @@ class RenderRequest(object):
         end_frame = d.get('end_frame') or 0
         time_estimate = d.get('time_estimate') or ''
         progress = d.get('progress') or 0
+        warmup_current = d.get('warmup_current') or 0
+        warmup_total = d.get('warmup_total') or 0
 
         return cls(
             uid=uid,
@@ -182,7 +190,9 @@ class RenderRequest(object):
             start_frame=start_frame,
             end_frame=end_frame,
             time_estimate=time_estimate,
-            progress=progress
+            progress=progress,
+            warmup_current=warmup_current,
+            warmup_total=warmup_total
         )
 
     def to_dict(self):
@@ -203,7 +213,7 @@ class RenderRequest(object):
         """
         remove_db(self.uid)
 
-    def update(self, progress=0, status='', time_estimate=''):
+    def update(self, progress=0, status='', time_estimate='', warmup_current=0, warmup_total=0):
         """
         Update current request progress in the fake database
 
@@ -213,6 +223,8 @@ class RenderRequest(object):
         :param progress: int. new progress
         :param status: RenderRequest. new render status
         :param time_estimate: str. new time remaining estimate
+        :param warmup_current: int. current engine warmup frame
+        :param warmup_total: int. total engine warmup frames
         """
         if progress:
             self.progress = progress
@@ -220,6 +232,9 @@ class RenderRequest(object):
             self.status = status
         if time_estimate:
             self.time_estimate = time_estimate
+        if warmup_current or warmup_total:
+            self.warmup_current = warmup_current
+            self.warmup_total = warmup_total
 
         write_db(self.__dict__)
 

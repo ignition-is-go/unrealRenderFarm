@@ -2,6 +2,7 @@
 MRQ executor for command-line rendering with server callbacks
 """
 
+import json
 import os
 import unreal
 
@@ -127,29 +128,39 @@ class MyExecutor(unreal.MoviePipelinePythonHostExecutor):
         else:
             time_str = 'Calculating...'
 
-        # Log engine warm up vs rendering
+        # Get engine warm up frame count
+        warmup_current, warmup_total = unreal.MoviePipelineBlueprintLibrary.get_engine_warm_up_frame_count(self.pipeline, 0)
+
         if progress == 0:
-            current, total = unreal.MoviePipelineBlueprintLibrary.get_engine_warm_up_frame_count(self.pipeline, 0)
-            warmup_str = "Warm Up {}/{}".format(current, total)
-            unreal.log("Engine Warm Up Frame {}/{}".format(current, total))
-            self.send_status_update(progress, warmup_str, 'in progress')
+            unreal.log("Engine Warm Up Frame {}/{}".format(warmup_current, warmup_total))
         else:
             unreal.log("Progress: {:.1f}% ETA: {}".format(progress, time_str))
-            self.send_status_update(progress, time_str, 'in progress')
+
+        self.send_status_update(progress, time_str, 'in progress', warmup_current, warmup_total)
 
     @unreal.ufunction(ret=None, params=[int, int, str])
     def on_http_response(self, index, code, message):
         """HTTP response callback"""
         unreal.log("HTTP response: {} {}".format(code, message[:50] if message else ""))
 
-    def send_status_update(self, progress, time_estimate, status):
+    def send_status_update(self, progress, time_estimate, status, warmup_current=0, warmup_total=0):
         """Send status update to render server"""
         if not self.job_id:
             unreal.log_warning("send_status_update: no job_id set!")
             return
 
         url = '{}/put/{}'.format(SERVER_API_URL, self.job_id)
-        body = '{};{};{}'.format(progress, time_estimate, status)
+        data = {
+            'progress': progress,
+            'time_estimate': time_estimate,
+            'status': status,
+            'warmup_current': warmup_current,
+            'warmup_total': warmup_total
+        }
+        body = json.dumps(data)
+
+        headers = unreal.Map(str, str)
+        headers['Content-Type'] = 'application/json'
 
         unreal.log("HTTP PUT {} -> {}".format(url, body))
-        self.send_http_request(url, "PUT", body, unreal.Map(str, str))
+        self.send_http_request(url, "PUT", body, headers)

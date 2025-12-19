@@ -180,18 +180,18 @@ def update_request(uid):
     :param uid: str. uid of render request to update
     :return: dict. updated render request serialized as dictionary
     """
-    # unreal sends plain text
-    content = request.data.decode('utf-8')
-    progress, time_estimate, status = content.split(';')
+    data = request.get_json(force=True)
 
     rr = renderRequest.RenderRequest.from_db(uid)
     if not rr:
         return {}
 
     rr.update(
-        progress=int(float(progress)),
-        time_estimate=time_estimate,
-        status=status
+        progress=int(float(data.get('progress', 0))),
+        time_estimate=data.get('time_estimate', ''),
+        status=data.get('status', ''),
+        warmup_current=data.get('warmup_current', 0),
+        warmup_total=data.get('warmup_total', 0)
     )
     return rr.to_dict()
 
