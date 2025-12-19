@@ -3,7 +3,8 @@
     "allow": [
       "WebSearch",
       "WebFetch(domain:dev.epicgames.com)",
-      "Bash(powershell:*)"
+      "Bash(powershell:*)",
+      "WebFetch(domain:forums.unrealengine.com)"
     ]
   }
 }
