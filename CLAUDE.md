@@ -60,6 +60,43 @@ Unreal Engine + myExecutor → PUT /api/put/<uid> → updates progress
 
 **Persistence:** JSON files in `database/` directory (one file per job UID). See `util/renderRequest.py` for the `RenderRequest` model.
 
+## Execution Environments (IMPORTANT)
+
+**Code in this repo runs in 3 separate environments. Always consider which environment you're modifying:**
+
+1. **Server (Linux VM)** - `requestManager.py`
+   - Runs Flask server, serves REST API and web UI
+   - Has direct access to `database/` directory
+   - Uses Linux paths
+
+2. **Render Node (Windows VM)** - `requestWorker.py` + `myExecutor.py`
+   - `requestWorker.py` runs as a Python process, polls server via HTTP
+   - `myExecutor.py` runs inside Unreal Engine's embedded Python interpreter
+   - Uses Windows paths, communicates with server only via HTTP API
+   - Cannot directly access server filesystem
+
+3. **Web UI (Browser)** - `templates/index.html`
+   - JavaScript running in user's browser
+   - Communicates with server only via REST API (`/api/*`)
+   - Cannot access server filesystem or call Python directly
+
+**Common pitfalls:**
+- Don't assume render nodes can access server files directly - they must use HTTP
+- Path handling differs between Linux server and Windows render nodes
+- Web UI JavaScript cannot call Python functions - must use API endpoints
+- `myExecutor.py` runs in Unreal's Python, not system Python - limited imports available
+
+## Unreal Engine API
+
+**Always consult official Unreal Engine 5.6 documentation** - do not guess or assume API names, parameters, or behavior. The Unreal Python API is extensive and version-specific. Key areas:
+- Movie Render Queue: `MoviePipelinePythonHostExecutor`, `MoviePipelineQueue`, `MoviePipelineExecutorBase`
+- Editor subsystems and asset loading
+- Command-line argument parsing in Unreal context
+
+Resources:
+- Official docs: https://dev.epicgames.com/documentation/en-us/unreal-engine/unreal-engine-5.6-documentation
+- Local examples: Check `Engine/Plugins/MovieRenderPipeline/Content/Python/` in the UE install for reference executor implementations
+
 ## Configuration
 
 Copy `.env.example` to `.env` and configure:
