@@ -2,15 +2,8 @@
 My custom render executor for remote/distributed rendering
 """
 
-import sys
-import os
 import time
 import unreal
-
-# Add parent directory to path so util module can be found
-_module_dir = os.environ.get('UE_PYTHONPATH', os.path.dirname(__file__))
-if _module_dir not in sys.path:
-    sys.path.insert(0, _module_dir)
 
 from util import client
 from util import renderRequest

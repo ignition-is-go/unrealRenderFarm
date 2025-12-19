@@ -67,7 +67,7 @@ def render(uid, umap_path, useq_path, uconfig_path):
         "-FullStdOutLogOutput"
     ]
     env = os.environ.copy()
-    env["UE_PYTHONPATH"] = MODULE_PATH
+    env["UE_PYTHONPATH"] = MODULE_PATH.replace('\\', '/')
     proc = subprocess.Popen(
         command,
         stdout=subprocess.PIPE,
