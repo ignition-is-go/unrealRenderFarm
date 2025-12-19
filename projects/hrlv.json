@@ -1,0 +1,8 @@
+{
+    "name": "HRLV Previs",
+    "map": "/Game/hrlv/maps/hrlv",
+    "config": "/Game/Cinematics/Presets/3008_30fps_mp4",
+    "sequences": [
+        "/Game/Cinematics/Sequences/LS_RenderBase"
+    ]
+}

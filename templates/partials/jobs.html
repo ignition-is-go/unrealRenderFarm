@@ -1,0 +1,49 @@
+<section class="jobs-section">
+    <h2>Jobs</h2>
+    {% if requests %}
+    <table>
+        <thead>
+            <tr>
+                <th>UID</th>
+                <th>Name</th>
+                <th>Owner</th>
+                <th>Worker</th>
+                <th>Status</th>
+                <th>Progress</th>
+                <th>Time Estimate</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for job in requests %}
+            <tr>
+                <td>{{ job.uid }}</td>
+                <td>{{ job.name }}</td>
+                <td>{{ job.owner }}</td>
+                <td>{{ job.worker or '-' }}</td>
+                <td>{{ job.status }}</td>
+                <td>
+                    <div class="progressContainer">
+                        <div class="progressBar" style="width: {{ job.progress }}%">{{ job.progress }}%</div>
+                    </div>
+                </td>
+                <td>{{ job.time_estimate or '-' }}</td>
+                <td>
+                    {% if job.status not in ['finished', 'cancelled'] %}
+                    <button class="btn-cancel"
+                            hx-post="/api/cancel/{{ job.uid }}"
+                            hx-swap="none">Cancel</button>
+                    {% else %}
+                    <button class="btn-delete"
+                            hx-delete="/api/delete/{{ job.uid }}"
+                            hx-swap="none">Delete</button>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="no-data">No jobs in queue</p>
+    {% endif %}
+</section>

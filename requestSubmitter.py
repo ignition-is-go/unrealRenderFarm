@@ -1,8 +1,14 @@
 """
-Client to submit new render request to server
+Submit render jobs from a project config file
+Usage: uv run python requestSubmitter.py projects/hrlv.json
 """
 
+from dotenv import load_dotenv
+load_dotenv()
+
+import json
 import logging
+import sys
 
 from util import client
 
@@ -14,30 +20,37 @@ LOGGER = logging.getLogger(__name__)
 def send(d):
     """
     Send/Submit a new render request
-
-    :param d: dict. a render request serialized as dictionary
     """
     rrequest = client.add_request(d)
     if rrequest:
-        LOGGER.info('request %s sent to server', rrequest.uid)
+        LOGGER.info('submitted job %s: %s', rrequest.uid, d['name'])
+
+
+def submit_project(config_path):
+    """
+    Submit all sequences from a project config file
+    """
+    with open(config_path) as f:
+        project = json.load(f)
+
+    LOGGER.info('Submitting project: %s', project['name'])
+
+    for seq in project['sequences']:
+        # seq is the full path, extract name from it (last part before any dot)
+        seq_name = seq.rstrip('/').split('/')[-1].split('.')[0]
+        send({
+            'name': seq_name,
+            'umap_path': project['map'],
+            'useq_path': seq,
+            'uconfig_path': project['config'],
+        })
+
+    LOGGER.info('Submitted %d jobs', len(project['sequences']))
 
 
 if __name__ == '__main__':
-    test_job_a = {
-        'name': 'street_seq01',
-        'owner': 'TEST_SUBMITTER_01',
-        'umap_path': '/Game/Cinematics/Street/Level_Cin_Street.Level_Cin_Street',
-        'useq_path': '/Game/Cinematics/Street/Shots/Shot01/LS_Shot_Street_Shot01.LS_Shot_Street_Shot01',
-        'uconfig_path': '/Game/Cinematics/Preset/Test.Test'
-    }
+    if len(sys.argv) < 2:
+        print("Usage: uv run python requestSubmitter.py projects/hrlv.json")
+        sys.exit(1)
 
-    test_job_b = {
-        'name': 'street_seq02',
-        'owner': 'TEST_SUBMITTER_01',
-        'umap_path': '/Game/Cinematics/Street/Level_Cin_Street.Level_Cin_Street',
-        'useq_path': '/Game/Cinematics/Street/Shots/Shot02/LS_Shot_Street_Shot02.LS_Shot_Street_Shot02',
-        'uconfig_path': '/Game/Cinematics/Preset/Test.Test'
-    }
-
-    for job in [test_job_a, test_job_b]:
-        send(job)
+    submit_project(sys.argv[1])

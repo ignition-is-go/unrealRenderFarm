@@ -36,12 +36,88 @@ def index_page():
     Server landing page
     """
     rrequests = renderRequest.read_all()
-    if not rrequests:
-        return 'Welcome!'
-
     jsons = [rrequest.to_dict() for rrequest in rrequests]
 
-    return render_template('index.html', requests=jsons)
+    # Get worker status
+    now = time.time()
+    workers = []
+    for name, info in WORKERS.items():
+        online = (now - info['last_seen']) < WORKER_TIMEOUT
+        workers.append({
+            'name': name,
+            'status': info['status'],
+            'online': online
+        })
+
+    return render_template('index.html', requests=jsons, workers=workers)
+
+
+@app.get('/partials/projects')
+def partials_projects():
+    """List available project configs"""
+    import glob
+    project_files = glob.glob(os.path.join(MODULE_PATH, 'projects', '*.json'))
+    projects = []
+    for pf in project_files:
+        with open(pf) as f:
+            import json
+            data = json.load(f)
+            data['_file'] = os.path.basename(pf)
+            projects.append(data)
+    return render_template('partials/projects.html', projects=projects)
+
+
+@app.post('/api/submit/<project_file>')
+def submit_project(project_file):
+    """Submit all sequences from a project"""
+    import json
+    project_path = os.path.join(MODULE_PATH, 'projects', project_file)
+    if not os.path.exists(project_path):
+        return {'error': 'project not found'}, 404
+
+    with open(project_path) as f:
+        project = json.load(f)
+
+    submitted = []
+    for seq in project['sequences']:
+        # seq is the full path, extract name from it (last part before any dot)
+        seq_name = seq.rstrip('/').split('/')[-1].split('.')[0]
+        data = {
+            'name': seq_name,
+            'umap_path': project['map'],
+            'useq_path': seq,
+            'uconfig_path': project['config'],
+        }
+        rrequest = renderRequest.RenderRequest.from_dict(data)
+        rrequest.write_json()
+        new_request_trigger(rrequest)
+        submitted.append(rrequest.uid)
+
+    LOGGER.info('Submitted %d jobs from %s', len(submitted), project_file)
+    return {'submitted': submitted}
+
+
+@app.get('/partials/workers')
+def partials_workers():
+    """Partial template for htmx polling"""
+    now = time.time()
+    workers = []
+    for name, info in WORKERS.items():
+        online = (now - info['last_seen']) < WORKER_TIMEOUT
+        workers.append({
+            'name': name,
+            'status': info['status'],
+            'online': online
+        })
+    return render_template('partials/workers.html', workers=workers)
+
+
+@app.get('/partials/jobs')
+def partials_jobs():
+    """Partial template for htmx polling"""
+    rrequests = renderRequest.read_all()
+    jsons = [rrequest.to_dict() for rrequest in rrequests]
+    return render_template('partials/jobs.html', requests=jsons)
 
 
 @app.get('/api/get')
@@ -77,6 +153,7 @@ def delete_request(uid):
     :param uid: str. render request uid
     """
     renderRequest.remove_db(uid)
+    return {'ok': True}
 
 
 @app.post('/api/post')
@@ -116,6 +193,23 @@ def update_request(uid):
         time_estimate=time_estimate,
         status=status
     )
+    return rr.to_dict()
+
+
+@app.post('/api/cancel/<uid>')
+def cancel_request(uid):
+    """
+    Cancel a render job - sets status to cancelled so workers skip it
+
+    :param uid: str. uid of render request to cancel
+    :return: dict. updated render request serialized as dictionary
+    """
+    rr = renderRequest.RenderRequest.from_db(uid)
+    if not rr:
+        return {'error': 'job not found'}, 404
+
+    rr.update(status=renderRequest.RenderStatus.cancelled)
+    LOGGER.info('cancelled job %s', uid)
     return rr.to_dict()
 
 

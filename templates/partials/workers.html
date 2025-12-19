@@ -1,0 +1,16 @@
+<section class="workers-section">
+    <h2>Workers</h2>
+    {% if workers %}
+    <div class="workers-grid">
+        {% for worker in workers %}
+        <div class="worker-card {{ 'online' if worker.online else 'offline' }}">
+            <div class="worker-status">{{ 'Online' if worker.online else 'Offline' }}</div>
+            <div class="worker-name">{{ worker.name }}</div>
+            <div class="worker-activity">{{ worker.status }}</div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="no-data">No workers connected</p>
+    {% endif %}
+</section>

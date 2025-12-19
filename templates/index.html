@@ -2,21 +2,26 @@
 <html>
 
 <head>
-    <script src = "https://ajax.googleapis.com/ajax/libs/jquery/3.6.1/jquery.min.js"></script>
-    <link rel="stylesheet" type="text/css" href= {{url_for('static', filename="main.css")}}>
+    <title>Render Farm</title>
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+    <link rel="stylesheet" type="text/css" href={{url_for('static', filename="main.css")}}>
 </head>
 
-<body style = "text-align:center;">
-    <table id = "table" align = "center" border="1px"></table>
+<body>
+    <div class="container">
+        <h1>Render Farm</h1>
 
-    <script src = {{url_for('static', filename="updateProgress.js")}}></script>
+        <div hx-get="/partials/workers" hx-trigger="load, every 5s" hx-swap="innerHTML">
+            {% include 'partials/workers.html' %}
+        </div>
 
-    <!-- https://stackoverflow.com/questions/30011170/flask-application-how-to-link-a-javascript-file-to-website -->
-    <script src = {{url_for('static', filename="createTable.js")}}></script>
-    <script>
-        // https://stackoverflow.com/questions/11178426/how-can-i-pass-data-from-flask-to-javascript-in-a-template
-        createTable( {{requests|tojson|safe}} );
-    </script>
+        <div hx-get="/partials/projects" hx-trigger="load" hx-swap="innerHTML">
+        </div>
+
+        <div hx-get="/partials/jobs" hx-trigger="load, every 3s" hx-swap="innerHTML">
+            {% include 'partials/jobs.html' %}
+        </div>
+    </div>
 </body>
 
 </html>
