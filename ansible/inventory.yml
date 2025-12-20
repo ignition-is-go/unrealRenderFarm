@@ -1,0 +1,38 @@
+# Render Farm Ansible Inventory
+# Update IPs to match your Proxmox VMs
+
+all:
+  children:
+    render_nodes:
+      hosts:
+        windows-unreal-render-01:
+          ansible_host: 192.168.1.133
+        windows-unreal-render-02:
+          ansible_host: 192.168.1.121
+        windows-unreal-render-03:
+          ansible_host: 192.168.1.128
+        windows-unreal-render-04:
+          ansible_host: 192.168.1.160
+        windows-unreal-render-05:
+          ansible_host: 192.168.1.162
+        windows-unreal-render-06:
+          ansible_host: 192.168.1.161
+        windows-unreal-render-07:
+          ansible_host: 192.168.1.159
+        windows-unreal-render-08:
+          ansible_host: 192.168.1.141
+      vars:
+        # WinRM connection (per Ansible docs)
+        ansible_connection: winrm
+        ansible_winrm_transport: ntlm
+        ansible_winrm_server_cert_validation: ignore
+        ansible_port: 5985
+
+        # Render node paths
+        repo_path: C:\unrealRenderFarm
+
+    manager:
+      hosts:
+        ue-render-plane:
+          ansible_host: 192.168.1.158
+          ansible_connection: local

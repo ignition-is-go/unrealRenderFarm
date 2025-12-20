@@ -1,0 +1,24 @@
+---
+# Stop render workers on all nodes
+# Usage: ansible-playbook -i inventory.yml playbooks/stop-workers.yml
+
+- name: Stop Render Workers
+  hosts: render_nodes
+  gather_facts: false
+
+  tasks:
+    - name: Find and stop worker processes
+      ansible.windows.win_shell: |
+        $workers = Get-Process -Name python -ErrorAction SilentlyContinue |
+          Where-Object { $_.CommandLine -like '*requestWorker*' }
+        if ($workers) {
+          $workers | Stop-Process -Force
+          Write-Output "Stopped $($workers.Count) worker process(es)"
+        } else {
+          Write-Output "No workers running"
+        }
+      register: stop_result
+
+    - name: Report result
+      ansible.builtin.debug:
+        msg: "{{ stop_result.stdout | trim }}"

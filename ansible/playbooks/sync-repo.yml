@@ -1,0 +1,21 @@
+---
+# Pull latest code on all render nodes
+# Usage: ansible-playbook -i inventory.yml playbooks/sync-repo.yml
+
+- name: Sync Repository
+  hosts: render_nodes
+  gather_facts: false
+
+  vars:
+    repo_path: C:\unrealRenderFarm
+
+  tasks:
+    - name: Pull latest changes
+      ansible.windows.win_shell: |
+        cd {{ repo_path }}
+        git pull
+      register: git_result
+
+    - name: Show result
+      ansible.builtin.debug:
+        msg: "{{ git_result.stdout | trim }}"

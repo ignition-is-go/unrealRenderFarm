@@ -1,0 +1,42 @@
+---
+# Check status of all render nodes
+# Usage: ansible-playbook -i inventory.yml playbooks/status.yml
+
+- name: Check Render Node Status
+  hosts: render_nodes
+  gather_facts: true
+
+  tasks:
+    - name: Check worker process
+      ansible.windows.win_shell: |
+        $worker = Get-Process -Name python -ErrorAction SilentlyContinue |
+          Where-Object { $_.CommandLine -like '*requestWorker*' } |
+          Select-Object -First 1
+        if ($worker) {
+          Write-Output "RUNNING (PID: $($worker.Id))"
+        } else {
+          Write-Output "STOPPED"
+        }
+      register: worker_status
+      changed_when: false
+
+    - name: Check Unreal Engine process
+      ansible.windows.win_shell: |
+        $ue = Get-Process -Name UnrealEditor -ErrorAction SilentlyContinue |
+          Select-Object -First 1
+        if ($ue) {
+          Write-Output "RENDERING (PID: $($ue.Id))"
+        } else {
+          Write-Output "IDLE"
+        }
+      register: ue_status
+      changed_when: false
+
+    - name: Display status summary
+      ansible.builtin.debug:
+        msg: |
+          Host: {{ inventory_hostname }}
+          Worker: {{ worker_status.stdout | trim }}
+          Unreal: {{ ue_status.stdout | trim }}
+          CPU: {{ ansible_processor_vcpus }} cores
+          Memory: {{ (ansible_memtotal_mb / 1024) | round(1) }} GB

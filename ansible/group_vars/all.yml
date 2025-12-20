@@ -1,0 +1,7 @@
+# Credentials - set via environment variables (don't commit secrets)
+# Export these before running playbooks:
+#   export ANSIBLE_WINRM_USER=Administrator
+#   export ANSIBLE_WINRM_PASSWORD=yourpassword
+
+ansible_user: "{{ lookup('env', 'ANSIBLE_WINRM_USER') | default('Administrator', true) }}"
+ansible_password: "{{ lookup('env', 'ANSIBLE_WINRM_PASSWORD') }}"

@@ -1,0 +1,30 @@
+---
+# Start render workers on all nodes
+# Usage: ansible-playbook -i inventory.yml playbooks/start-workers.yml
+
+- name: Start Render Workers
+  hosts: render_nodes
+  gather_facts: false
+
+  vars:
+    repo_path: C:\unrealRenderFarm
+
+  tasks:
+    - name: Check if worker is already running
+      ansible.windows.win_shell: |
+        Get-Process -Name python -ErrorAction SilentlyContinue |
+        Where-Object { $_.CommandLine -like '*requestWorker*' }
+      register: worker_check
+      changed_when: false
+      failed_when: false
+
+    - name: Start worker process
+      ansible.windows.win_shell: |
+        cd {{ repo_path }}
+        Start-Process -FilePath "uv" -ArgumentList "run", "python", "requestWorker.py" -WindowStyle Hidden -PassThru
+      register: start_result
+      when: worker_check.stdout | trim == ""
+
+    - name: Report worker status
+      ansible.builtin.debug:
+        msg: "{{ 'Worker started' if start_result is changed else 'Worker already running' }}"
