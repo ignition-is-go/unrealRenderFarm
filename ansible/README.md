@@ -21,13 +21,10 @@ pip install "pywinrm>=0.4.0"
 Run this **once** on each Windows VM as Administrator:
 
 ```powershell
-# Option 1: Run the included script
-powershell -ExecutionPolicy Bypass -File C:\Users\Administrator\unrealRenderFarm\ansible\scripts\setup-winrm.ps1
-
-# Option 2: Quick setup
-winrm quickconfig -quiet
-Set-Item -Path WSMan:\localhost\Service\Auth\Negotiate -Value $true
-Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" -Name LocalAccountTokenFilterPolicy -Value 1
+# Run the bootstrap script (enables SSH + WinRM + firewall)
+cd C:\Users\Administrator\unrealRenderFarm
+git pull
+powershell -ExecutionPolicy Bypass -File .\ansible\scripts\setup-windows.ps1
 ```
 
 ## Configuration
