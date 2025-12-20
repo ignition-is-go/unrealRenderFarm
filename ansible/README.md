@@ -22,7 +22,7 @@ Run this **once** on each Windows VM as Administrator:
 
 ```powershell
 # Option 1: Run the included script
-powershell -ExecutionPolicy Bypass -File C:\unrealRenderFarm\ansible\scripts\setup-winrm.ps1
+powershell -ExecutionPolicy Bypass -File C:\Users\Administrator\unrealRenderFarm\ansible\scripts\setup-winrm.ps1
 
 # Option 2: Quick setup
 winrm quickconfig -quiet
