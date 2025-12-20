@@ -126,6 +126,8 @@ class RenderRequest(object):
         :return: RenderRequest. request object
         """
         request_file = os.path.join(DATABASE, '{}.json'.format(uid))
+        if not os.path.exists(request_file):
+            return None
         with open(request_file, 'r') as fp:
             try:
                 request_dict = json.load(fp)

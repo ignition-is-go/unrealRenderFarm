@@ -1,6 +1,9 @@
 ---
 # Start render workers on all nodes
 # Usage: ansible-playbook -i inventory.yml playbooks/start-workers.yml
+#
+# Uses scheduled task because WinRM kills child processes when session ends
+# See: https://docs.ansible.com/ansible/latest/os_guide/windows_usage.html
 
 - name: Start Render Workers
   hosts: render_nodes
@@ -8,9 +11,44 @@
 
   vars:
     repo_path: C:\Users\Administrator\unrealRenderFarm
+    uv_path: C:\Users\Administrator\.local\bin\uv.exe
 
   tasks:
-    - name: Check if worker is already running
+    - name: Create scheduled task for render worker
+      community.windows.win_scheduled_task:
+        name: RenderFarmWorker
+        description: Unreal Render Farm Worker Process
+        actions:
+          - path: "{{ uv_path }}"
+            arguments: run python requestWorker.py
+            working_directory: "{{ repo_path }}"
+        triggers:
+          - type: registration  # runs immediately when task is created
+          - type: logon         # runs when user logs in (including auto-logon)
+            delay: PT10S        # 10 second delay after logon
+        username: Administrator
+        password: "{{ ansible_password }}"
+        logon_type: interactive_token  # runs in interactive session with GPU access
+        run_level: highest
+        state: present
+        enabled: true
+
+    - name: Stop existing task and processes
+      ansible.windows.win_shell: |
+        Stop-ScheduledTask -TaskName RenderFarmWorker -ErrorAction SilentlyContinue
+        Get-Process -Name python -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+      changed_when: true
+
+    - name: Start the scheduled task
+      ansible.windows.win_shell: |
+        Start-ScheduledTask -TaskName RenderFarmWorker
+      changed_when: true
+
+    - name: Wait for worker to start
+      ansible.builtin.pause:
+        seconds: 3
+
+    - name: Verify worker is running
       ansible.windows.win_shell: |
         Get-Process -Name python -ErrorAction SilentlyContinue |
         Where-Object { $_.CommandLine -like '*requestWorker*' }
@@ -18,13 +56,6 @@
       changed_when: false
       failed_when: false
 
-    - name: Start worker process
-      ansible.windows.win_shell: |
-        cd {{ repo_path }}
-        Start-Process -FilePath "uv" -ArgumentList "run", "python", "requestWorker.py" -WindowStyle Hidden -PassThru
-      register: start_result
-      when: worker_check.stdout | trim == ""
-
     - name: Report worker status
       ansible.builtin.debug:
-        msg: "{{ 'Worker started' if start_result is changed else 'Worker already running' }}"
+        msg: "{{ 'Worker running' if worker_check.stdout | trim != '' else 'Worker NOT running - check task scheduler' }}"

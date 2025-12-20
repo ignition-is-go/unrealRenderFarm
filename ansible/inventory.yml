@@ -8,9 +8,9 @@ all:
         windows-unreal-render-01:
           ansible_host: 192.168.1.133
         windows-unreal-render-02:
-          ansible_host: 192.168.1.121
+          ansible_host: 192.168.1.163
         windows-unreal-render-03:
-          ansible_host: 192.168.1.128
+          ansible_host: 192.168.1.164
         windows-unreal-render-04:
           ansible_host: 192.168.1.160
         windows-unreal-render-05:

@@ -25,6 +25,7 @@ LOGGER = logging.getLogger(__name__)
 # Worker registry: {worker_name: {status, last_seen, current_job}}
 WORKERS = {}
 WORKER_TIMEOUT = 30  # seconds before worker considered offline
+LAST_ASSIGNED_WORKER = None  # for round-robin assignment
 
 # region HTTP REST API
 app = Flask(__name__)
@@ -156,6 +157,19 @@ def delete_request(uid):
     return {'ok': True}
 
 
+@app.delete('/api/delete-all')
+def delete_all_requests():
+    """
+    Delete all render requests from database
+    """
+    rrequests = renderRequest.read_all()
+    count = len(rrequests)
+    for rr in rrequests:
+        renderRequest.remove_db(rr.uid)
+    LOGGER.info('deleted all %d jobs', count)
+    return {'ok': True, 'deleted': count}
+
+
 @app.post('/api/post')
 def create_request():
     """
@@ -184,7 +198,7 @@ def update_request(uid):
 
     rr = renderRequest.RenderRequest.from_db(uid)
     if not rr:
-        return {}
+        return {'error': 'job not found'}, 404
 
     rr.update(
         progress=int(float(data.get('progress', 0))),
@@ -253,13 +267,29 @@ def get_workers():
 
 def get_available_worker():
     """
-    Get an available worker (online and idle)
+    Get an available worker (online and idle) using round-robin
     """
+    global LAST_ASSIGNED_WORKER
     now = time.time()
-    for name, info in WORKERS.items():
-        if (now - info['last_seen']) < WORKER_TIMEOUT:
-            return name
-    return None
+
+    # Get list of online workers
+    online_workers = [
+        name for name, info in WORKERS.items()
+        if (now - info['last_seen']) < WORKER_TIMEOUT
+    ]
+
+    if not online_workers:
+        return None
+
+    # Round-robin: find next worker after last assigned
+    if LAST_ASSIGNED_WORKER in online_workers:
+        idx = online_workers.index(LAST_ASSIGNED_WORKER)
+        next_idx = (idx + 1) % len(online_workers)
+    else:
+        next_idx = 0
+
+    LAST_ASSIGNED_WORKER = online_workers[next_idx]
+    return LAST_ASSIGNED_WORKER
 
 
 def new_request_trigger(rrequest):

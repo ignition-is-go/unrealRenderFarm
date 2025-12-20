@@ -85,3 +85,4 @@ database/
 # Ansible vault/secrets
 ansible/*.vault.yml
 ansible/vault.yml
+ansible/.env

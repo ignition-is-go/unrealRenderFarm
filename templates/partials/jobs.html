@@ -1,5 +1,12 @@
 <section class="jobs-section">
-    <h2>Jobs</h2>
+    <h2>Jobs
+        {% if requests %}
+        <button class="btn-delete-all"
+                hx-delete="/api/delete-all"
+                hx-confirm="Delete all {{ requests|length }} jobs?"
+                hx-swap="none">Delete All</button>
+        {% endif %}
+    </h2>
     {% if requests %}
     <table>
         <thead>

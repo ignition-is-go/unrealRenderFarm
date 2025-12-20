@@ -218,3 +218,20 @@ td {
 .btn-delete:hover {
   background: #888;
 }
+
+.btn-delete-all {
+  padding: 4px 10px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+  background: #e74c3c;
+  color: white;
+  margin-left: 10px;
+  text-transform: none;
+  font-weight: normal;
+}
+
+.btn-delete-all:hover {
+  background: #c0392b;
+}
