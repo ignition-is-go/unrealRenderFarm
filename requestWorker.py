@@ -285,6 +285,7 @@ def main():
 
     server_connected = False
     ever_connected = False
+    disconnect_time = None
 
     while True:
         try:
@@ -301,16 +302,24 @@ def main():
             jobs = client.get_my_jobs(WORKER_NAME)
             if jobs is None:
                 if server_connected:
-                    LOGGER.warning('Lost connection to server, will keep retrying...')
+                    LOGGER.warning('Lost connection to server, retrying...')
                     server_connected = False
+                    disconnect_time = time.time()
+                elif disconnect_time:
+                    # Log progress every 30 seconds while disconnected
+                    elapsed = int(time.time() - disconnect_time)
+                    if elapsed > 0 and elapsed % 30 == 0:
+                        LOGGER.info('Waiting for server... (%ds)', elapsed)
                 jobs = []
             elif not server_connected:
                 if ever_connected:
-                    LOGGER.info('Reconnected to server at %s', client.SERVER_URL)
+                    elapsed = int(time.time() - disconnect_time) if disconnect_time else 0
+                    LOGGER.info('Reconnected to server after %ds', elapsed)
                 else:
                     LOGGER.info('Connected to server at %s', client.SERVER_URL)
                     ever_connected = True
                 server_connected = True
+                disconnect_time = None
 
             # Filter for ready_to_start jobs
             ready_jobs = [
