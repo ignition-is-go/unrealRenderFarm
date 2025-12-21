@@ -284,6 +284,7 @@ def main():
     LOGGER.info('Render timeout: %d seconds', RENDER_TIMEOUT)
 
     server_connected = False
+    ever_connected = False
 
     while True:
         try:
@@ -300,11 +301,15 @@ def main():
             jobs = client.get_my_jobs(WORKER_NAME)
             if jobs is None:
                 if server_connected:
-                    LOGGER.warning('Lost connection to server, will retry...')
+                    LOGGER.warning('Lost connection to server, will keep retrying...')
                     server_connected = False
                 jobs = []
             elif not server_connected:
-                LOGGER.info('Connected to server at %s', client.SERVER_URL)
+                if ever_connected:
+                    LOGGER.info('Reconnected to server at %s', client.SERVER_URL)
+                else:
+                    LOGGER.info('Connected to server at %s', client.SERVER_URL)
+                    ever_connected = True
                 server_connected = True
 
             # Filter for ready_to_start jobs
