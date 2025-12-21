@@ -42,24 +42,34 @@ POLL_INTERVAL = int(os.environ.get('POLL_INTERVAL', '10'))  # seconds
 
 def log_output(pipe, prefix='UE'):
     """Read and log output from subprocess pipe"""
-    patterns = [
+    # Patterns to INCLUDE in logs
+    include_patterns = [
         r'=== MyExecutor',
         r'HTTP PUT',
-        r'HTTP response',
         r'SERVER_API_URL',
-        r'Engine Warm Up Frame',
         r'Progress:.*%',
         r'Render finished',
-        r'Error:',
-        r'error:',
-        r'Warning:',
+        r'LogPython: Error',
+        r'LogPython: Warning',
+        r'Pipeline initialized',
+        r'FATAL:',
     ]
-    pattern = re.compile('|'.join(patterns))
+    # Patterns to EXCLUDE (noisy warnings)
+    exclude_patterns = [
+        r'Anima4D',
+        r'UAnima4DStreamInfo',
+        r'RshipTargetComponent',
+        r'Subsystem not found',
+        r'BeginDestroy',
+        r'Destructor',
+    ]
+    include_re = re.compile('|'.join(include_patterns))
+    exclude_re = re.compile('|'.join(exclude_patterns))
 
     try:
         for line in iter(pipe.readline, ''):
             line = line.rstrip()
-            if pattern.search(line):
+            if include_re.search(line) and not exclude_re.search(line):
                 LOGGER.info('[%s] %s', prefix, line)
     except Exception as e:
         LOGGER.warning('log_output error: %s', e)

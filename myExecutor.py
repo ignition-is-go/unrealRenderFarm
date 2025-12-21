@@ -185,6 +185,14 @@ class MyExecutor(unreal.MoviePipelinePythonHostExecutor):
             if not self.pipeline:
                 return
 
+            # Ensure attributes exist (in case _post_init wasn't called)
+            if not hasattr(self, '_last_update_time'):
+                self._last_update_time = 0.0
+            if not hasattr(self, '_last_progress'):
+                self._last_progress = -1.0
+            if not hasattr(self, '_http_failures'):
+                self._http_failures = 0
+
             # Get progress
             try:
                 progress = 100 * unreal.MoviePipelineLibrary.get_completion_percentage(self.pipeline)
@@ -257,6 +265,10 @@ class MyExecutor(unreal.MoviePipelinePythonHostExecutor):
         if not self.job_id:
             unreal.log_warning("send_status_update: no job_id set!")
             return
+
+        # Ensure _http_failures exists
+        if not hasattr(self, '_http_failures'):
+            self._http_failures = 0
 
         # Skip if too many failures (server probably down)
         if self._http_failures >= MAX_HTTP_FAILURES and status not in ('finished', 'errored'):

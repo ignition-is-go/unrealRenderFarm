@@ -44,6 +44,8 @@ VALID_TRANSITIONS = {
     ],
     renderRequest.RenderStatus.ready_to_start: [
         renderRequest.RenderStatus.in_progress,
+        renderRequest.RenderStatus.finished,  # Allow direct completion
+        renderRequest.RenderStatus.errored,   # Allow direct error
         renderRequest.RenderStatus.cancelled,
         renderRequest.RenderStatus.unassigned,  # For reassignment
     ],
@@ -55,11 +57,13 @@ VALID_TRANSITIONS = {
     ],
     renderRequest.RenderStatus.finished: [],  # Terminal state
     renderRequest.RenderStatus.errored: [
+        renderRequest.RenderStatus.unassigned,  # Allow retry with reassignment
         renderRequest.RenderStatus.ready_to_start,  # Allow retry
         renderRequest.RenderStatus.failed,  # Max retries exceeded
     ],
     renderRequest.RenderStatus.failed: [],  # Terminal state
     renderRequest.RenderStatus.cancelled: [
+        renderRequest.RenderStatus.unassigned,  # Allow retry with reassignment
         renderRequest.RenderStatus.ready_to_start,  # Allow restart
     ],
     renderRequest.RenderStatus.paused: [
@@ -301,7 +305,13 @@ def retry_request(uid):
     rr.retry_count = new_retry_count
     rr.error_message = ''
     rr.progress = 0
-    rr.update(status=renderRequest.RenderStatus.ready_to_start)
+    rr.started_at = ''
+    rr.completed_at = ''
+    rr.worker = ''  # Clear worker so it can be reassigned
+    rr.update(status=renderRequest.RenderStatus.unassigned)
+
+    # Trigger worker assignment
+    new_request_trigger(rr)
 
     LOGGER.info('retrying job %s (attempt %d)', uid, new_retry_count)
     return rr.to_dict()

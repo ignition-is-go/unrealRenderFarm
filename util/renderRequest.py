@@ -5,6 +5,7 @@ Unreal render job request class for data representation and database operation
 import logging
 import os
 import socket
+import threading
 import uuid
 from datetime import datetime
 
@@ -21,7 +22,10 @@ DATABASE_FILE = os.path.join(DATABASE_DIR, 'jobs.json')
 # Ensure database directory exists
 os.makedirs(DATABASE_DIR, exist_ok=True)
 
-# Initialize TinyDB (thread-safe by default)
+# Thread lock for database operations
+_db_lock = threading.RLock()
+
+# Initialize TinyDB
 _db = TinyDB(DATABASE_FILE)
 _jobs = _db.table('jobs')
 _workers = _db.table('workers')
@@ -303,7 +307,8 @@ def read_all():
 
     :return: [RenderRequest]. request objects present in the database
     """
-    all_jobs = _jobs.all()
+    with _db_lock:
+        all_jobs = _jobs.all()
     return [RenderRequest.from_dict(job) for job in all_jobs]
 
 
@@ -314,7 +319,8 @@ def read_db_safe(uid):
     :param uid: str. request uid
     :return: dict or None. RenderRequest data as dictionary
     """
-    result = _jobs.get(Job.uid == uid)
+    with _db_lock:
+        result = _jobs.get(Job.uid == uid)
     return result
 
 
@@ -326,7 +332,8 @@ def write_db(d):
     """
     uid = d['uid']
     LOGGER.info('writing to %s', uid)
-    _jobs.upsert(d, Job.uid == uid)
+    with _db_lock:
+        _jobs.upsert(d, Job.uid == uid)
 
 
 def remove_db(uid):
@@ -335,14 +342,16 @@ def remove_db(uid):
 
     :param uid: str. request uid
     """
-    _jobs.remove(Job.uid == uid)
+    with _db_lock:
+        _jobs.remove(Job.uid == uid)
 
 
 def remove_all():
     """
     Clear all jobs from database
     """
-    _jobs.truncate()
+    with _db_lock:
+        _jobs.truncate()
 
 # endregion
 
@@ -354,22 +363,26 @@ Worker = Query()
 
 def get_worker(name):
     """Get worker info by name"""
-    return _workers.get(Worker.name == name)
+    with _db_lock:
+        return _workers.get(Worker.name == name)
 
 
 def get_all_workers():
     """Get all registered workers"""
-    return _workers.all()
+    with _db_lock:
+        return _workers.all()
 
 
 def upsert_worker(data):
     """Insert or update worker data"""
-    _workers.upsert(data, Worker.name == data['name'])
+    with _db_lock:
+        _workers.upsert(data, Worker.name == data['name'])
 
 
 def remove_worker(name):
     """Remove a worker from the database"""
-    _workers.remove(Worker.name == name)
+    with _db_lock:
+        _workers.remove(Worker.name == name)
 
 # endregion
 
@@ -384,12 +397,13 @@ def log_error(worker_name, job_uid, message):
     :param job_uid: str. UID of the job (optional, can be None)
     :param message: str. error message
     """
-    _errors.insert({
-        'timestamp': datetime.now().isoformat(),
-        'worker': worker_name,
-        'job_uid': job_uid,
-        'message': message
-    })
+    with _db_lock:
+        _errors.insert({
+            'timestamp': datetime.now().isoformat(),
+            'worker': worker_name,
+            'job_uid': job_uid,
+            'message': message
+        })
 
 
 def get_recent_errors(limit=20):
@@ -399,7 +413,8 @@ def get_recent_errors(limit=20):
     :param limit: int. maximum number of errors to return
     :return: list of error dicts
     """
-    all_errors = _errors.all()
+    with _db_lock:
+        all_errors = _errors.all()
     # Sort by timestamp descending and limit
     sorted_errors = sorted(all_errors, key=lambda e: e.get('timestamp', ''), reverse=True)
     return sorted_errors[:limit]
@@ -407,6 +422,7 @@ def get_recent_errors(limit=20):
 
 def clear_errors():
     """Clear all errors from the database"""
-    _errors.truncate()
+    with _db_lock:
+        _errors.truncate()
 
 # endregion
