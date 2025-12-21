@@ -33,21 +33,24 @@ def get_all_requests():
     return [renderRequest.RenderRequest.from_dict(result) for result in results]
 
 
-@retry(max_attempts=3, backoff=2, exceptions=(requests.exceptions.RequestException,))
 def get_my_jobs(worker_name):
     """
     Get only jobs assigned to this worker (more efficient than get_all_requests).
 
     :param worker_name: str. worker name
-    :return: [renderRequest.RenderRequest]. request objects assigned to this worker
+    :return: [renderRequest.RenderRequest]. request objects assigned to this worker,
+             or None if server unreachable (caller should retry)
     """
-    response = requests.get(
-        SERVER_API_URL + '/jobs/mine/{}'.format(worker_name),
-        timeout=REQUEST_TIMEOUT
-    )
-    response.raise_for_status()
-    results = response.json().get('jobs', [])
-    return [renderRequest.RenderRequest.from_dict(result) for result in results]
+    try:
+        response = requests.get(
+            SERVER_API_URL + '/jobs/mine/{}'.format(worker_name),
+            timeout=REQUEST_TIMEOUT
+        )
+        response.raise_for_status()
+        results = response.json().get('jobs', [])
+        return [renderRequest.RenderRequest.from_dict(result) for result in results]
+    except requests.exceptions.RequestException:
+        return None  # Let caller handle retry
 
 
 @retry(max_attempts=3, backoff=2, exceptions=(requests.exceptions.RequestException,))
