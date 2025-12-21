@@ -72,6 +72,17 @@ fabric.properties
 
 # Python compiled file
 *.pyc
+__pycache__/
+
+# Test artifacts
+.coverage
+.hypothesis/
+.pytest_cache/
+htmlcov/
+
+# Log files
+*.log
+worker_log.txt
 
 # Environment variables (local config)
 .env
