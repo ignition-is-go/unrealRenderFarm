@@ -283,6 +283,8 @@ def main():
     LOGGER.info('Project: %s', UNREAL_PROJECT)
     LOGGER.info('Render timeout: %d seconds', RENDER_TIMEOUT)
 
+    server_connected = False
+
     while True:
         try:
             # Send heartbeat with current metrics
@@ -297,7 +299,13 @@ def main():
             # Get jobs assigned to this worker using efficient filtered API
             jobs = client.get_my_jobs(WORKER_NAME)
             if jobs is None:
+                if server_connected:
+                    LOGGER.warning('Lost connection to server, will retry...')
+                    server_connected = False
                 jobs = []
+            elif not server_connected:
+                LOGGER.info('Connected to server at %s', client.SERVER_URL)
+                server_connected = True
 
             # Filter for ready_to_start jobs
             ready_jobs = [
