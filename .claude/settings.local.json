@@ -4,7 +4,10 @@
       "WebSearch",
       "WebFetch(domain:dev.epicgames.com)",
       "Bash(powershell:*)",
-      "WebFetch(domain:forums.unrealengine.com)"
+      "WebFetch(domain:forums.unrealengine.com)",
+      "Bash(uv add:*)",
+      "Bash(python3:*)",
+      "Bash(uv run pytest:*)"
     ]
   }
 }

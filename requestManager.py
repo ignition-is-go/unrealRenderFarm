@@ -2,7 +2,6 @@
 Remote Render HTTP Server with REST API
 
 Hardened for production with:
-- Rate limiting
 - Worker persistence in database
 - Filtered APIs for efficient polling
 - Error tracking and reporting
@@ -19,8 +18,6 @@ from datetime import datetime
 from flask import Flask
 from flask import request
 from flask import render_template
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
 
 from util import renderRequest
 
@@ -74,14 +71,6 @@ VALID_TRANSITIONS = {
 
 # region HTTP REST API
 app = Flask(__name__)
-
-# Rate limiting
-limiter = Limiter(
-    get_remote_address,
-    app=app,
-    default_limits=["200 per minute"],
-    storage_uri="memory://"
-)
 
 
 @app.route('/')
@@ -235,7 +224,6 @@ def is_valid_transition(current_status, new_status):
 
 
 @app.put('/api/put/<uid>')
-@limiter.limit("60 per minute")
 def update_request(uid):
     """Update a render request"""
     data = request.get_json(force=True)
