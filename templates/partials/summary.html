@@ -1,0 +1,23 @@
+<div class="summary-stats">
+    <div class="stat-group">
+        <span class="stat-label">Workers</span>
+        <span class="stat-value">
+            <span class="stat-online">{{ workers|selectattr('online')|list|length }}</span>/<span class="stat-total">{{ workers|length }}</span> online
+        </span>
+    </div>
+    <div class="stat-group">
+        <span class="stat-label">Jobs</span>
+        <span class="stat-value">
+            {% set finished = requests|selectattr('status', 'equalto', 'finished')|list|length %}
+            {% set rendering = requests|selectattr('status', 'equalto', 'in progress')|list|length %}
+            {% set queued = requests|selectattr('status', 'in', ['unassigned', 'ready_to_start'])|list|length %}
+            {% set errored = requests|selectattr('status', 'in', ['errored', 'failed'])|list|length %}
+            <span class="stat-done">{{ finished }} done</span>,
+            <span class="stat-rendering">{{ rendering }} rendering</span>,
+            <span class="stat-queued">{{ queued }} queued</span>
+            {% if errored > 0 %}
+            , <span class="stat-error">{{ errored }} failed</span>
+            {% endif %}
+        </span>
+    </div>
+</div>

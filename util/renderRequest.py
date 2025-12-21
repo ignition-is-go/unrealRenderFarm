@@ -3,18 +3,29 @@ Unreal render job request class for data representation and database operation
 """
 
 import logging
+import os
 import socket
 import uuid
-import os
-import json
 from datetime import datetime
+
+from tinydb import TinyDB, Query
 
 
 LOGGER = logging.getLogger(__name__)
 
 MODULE_PATH = os.path.dirname(os.path.abspath(__file__))
 ROOT_PATH = os.path.dirname(MODULE_PATH)
-DATABASE = os.path.join(ROOT_PATH, 'database')
+DATABASE_DIR = os.path.join(ROOT_PATH, 'database')
+DATABASE_FILE = os.path.join(DATABASE_DIR, 'jobs.json')
+
+# Ensure database directory exists
+os.makedirs(DATABASE_DIR, exist_ok=True)
+
+# Initialize TinyDB (thread-safe by default)
+_db = TinyDB(DATABASE_FILE)
+_jobs = _db.table('jobs')
+_workers = _db.table('workers')
+_errors = _db.table('errors')
 
 
 class RenderStatus(object):
@@ -27,8 +38,12 @@ class RenderStatus(object):
     in_progress = 'in progress'
     finished = 'finished'
     errored = 'errored'
+    failed = 'failed'  # Terminal state after max retries
     cancelled = 'cancelled'
     paused = 'paused'
+
+# Maximum retry attempts before marking as failed
+MAX_RETRIES = 3
 
 
 class RenderRequest(object):
@@ -46,7 +61,7 @@ class RenderRequest(object):
             time_created='',
             priority=0,
             category='',
-            tags=[],
+            tags=None,
             status='',
             umap_path='',
             useq_path='',
@@ -61,7 +76,11 @@ class RenderRequest(object):
             time_estimate='',
             progress=0,
             warmup_current=0,
-            warmup_total=0
+            warmup_total=0,
+            error_message='',
+            retry_count=0,
+            started_at='',
+            completed_at=''
     ):
         """
         Initialization
@@ -89,15 +108,19 @@ class RenderRequest(object):
         :param progress: int. render progress [0 to 100]
         :param warmup_current: int. current engine warmup frame
         :param warmup_total: int. total engine warmup frames
+        :param error_message: str. error description if job failed
+        :param retry_count: int. number of times job has been retried
+        :param started_at: str. ISO timestamp when render started
+        :param completed_at: str. ISO timestamp when render finished/failed
         """
-        self.uid = uid or str(uuid.uuid4())[:4]
+        self.uid = uid or str(uuid.uuid4())[:8]
         self.name = name
         self.owner = owner or socket.gethostname()
         self.worker = worker
         self.time_created = time_created or datetime.now().strftime("%m/%d/%Y, %H:%M:%S")
         self.priority = priority or 0
         self.category = category
-        self.tags = tags
+        self.tags = tags if tags is not None else []
         self.status = status or RenderStatus.unassigned
         self.umap_path = umap_path
         self.useq_path = useq_path
@@ -114,6 +137,10 @@ class RenderRequest(object):
         self.progress = progress
         self.warmup_current = warmup_current
         self.warmup_total = warmup_total
+        self.error_message = error_message
+        self.retry_count = retry_count
+        self.started_at = started_at
+        self.completed_at = completed_at
 
     @classmethod
     def from_db(cls, uid):
@@ -122,18 +149,12 @@ class RenderRequest(object):
 
         This is a fake database using json
 
-        :param uid: int. unique id from database
+        :param uid: str. unique id from database
         :return: RenderRequest. request object
         """
-        request_file = os.path.join(DATABASE, '{}.json'.format(uid))
-        if not os.path.exists(request_file):
+        request_dict = read_db_safe(uid)
+        if request_dict is None:
             return None
-        with open(request_file, 'r') as fp:
-            try:
-                request_dict = json.load(fp)
-            except Exception as e:
-                LOGGER.error('Failed to load request object from db: %s', e)
-                return None
         return cls.from_dict(request_dict)
 
     @classmethod
@@ -170,6 +191,10 @@ class RenderRequest(object):
         progress = d.get('progress') or 0
         warmup_current = d.get('warmup_current') or 0
         warmup_total = d.get('warmup_total') or 0
+        error_message = d.get('error_message') or ''
+        retry_count = d.get('retry_count') or 0
+        started_at = d.get('started_at') or ''
+        completed_at = d.get('completed_at') or ''
 
         return cls(
             uid=uid,
@@ -194,7 +219,11 @@ class RenderRequest(object):
             time_estimate=time_estimate,
             progress=progress,
             warmup_current=warmup_current,
-            warmup_total=warmup_total
+            warmup_total=warmup_total,
+            error_message=error_message,
+            retry_count=retry_count,
+            started_at=started_at,
+            completed_at=completed_at
         )
 
     def to_dict(self):
@@ -215,28 +244,38 @@ class RenderRequest(object):
         """
         remove_db(self.uid)
 
-    def update(self, progress=0, status='', time_estimate='', warmup_current=0, warmup_total=0):
+    def update(self, progress=None, status=None, time_estimate=None, warmup_current=None,
+               warmup_total=None, error_message=None, started_at=None, completed_at=None):
         """
-        Update current request progress in the fake database
+        Update current request progress in the database
 
         used by the render worker (renderWorker.py)
-        there are fields we can restrict for updating
 
         :param progress: int. new progress
         :param status: RenderRequest. new render status
         :param time_estimate: str. new time remaining estimate
         :param warmup_current: int. current engine warmup frame
         :param warmup_total: int. total engine warmup frames
+        :param error_message: str. error description if failed
+        :param started_at: str. ISO timestamp when render started
+        :param completed_at: str. ISO timestamp when render finished/failed
         """
-        if progress:
+        if progress is not None:
             self.progress = progress
-        if status:
+        if status is not None:
             self.status = status
-        if time_estimate:
+        if time_estimate is not None:
             self.time_estimate = time_estimate
-        if warmup_current or warmup_total:
+        if warmup_current is not None:
             self.warmup_current = warmup_current
+        if warmup_total is not None:
             self.warmup_total = warmup_total
+        if error_message is not None:
+            self.error_message = error_message
+        if started_at is not None:
+            self.started_at = started_at
+        if completed_at is not None:
+            self.completed_at = completed_at
 
         write_db(self.__dict__)
 
@@ -253,7 +292,10 @@ class RenderRequest(object):
         write_db(self.__dict__)
 
 
-# region database utility
+# region database utility (TinyDB)
+
+Job = Query()
+
 
 def read_all():
     """
@@ -261,14 +303,30 @@ def read_all():
 
     :return: [RenderRequest]. request objects present in the database
     """
-    rrequests = list()
-    files = os.listdir(DATABASE)
-    uids = [os.path.splitext(os.path.basename(f))[0] for f in files if f.endswith('.json')]
-    for uid in uids:
-        rrequest = RenderRequest.from_db(uid)
-        rrequests.append(rrequest)
+    all_jobs = _jobs.all()
+    return [RenderRequest.from_dict(job) for job in all_jobs]
 
-    return rrequests
+
+def read_db_safe(uid):
+    """
+    Read a database entry by UID.
+
+    :param uid: str. request uid
+    :return: dict or None. RenderRequest data as dictionary
+    """
+    result = _jobs.get(Job.uid == uid)
+    return result
+
+
+def write_db(d):
+    """
+    Write/overwrite a database entry (upsert).
+
+    :param d: dict. RenderRequest object presented as a dictionary
+    """
+    uid = d['uid']
+    LOGGER.info('writing to %s', uid)
+    _jobs.upsert(d, Job.uid == uid)
 
 
 def remove_db(uid):
@@ -277,30 +335,78 @@ def remove_db(uid):
 
     :param uid: str. request uid
     """
-    try:
-        os.remove(os.path.join(DATABASE, '{}.json'.format(uid)))
-    except FileNotFoundError:
-        pass
+    _jobs.remove(Job.uid == uid)
 
 
 def remove_all():
     """
-    Clear database
+    Clear all jobs from database
     """
-    files = os.path.join(DATABASE, '*.json')
-    for file in files:
-        os.remove(file)
+    _jobs.truncate()
+
+# endregion
 
 
-def write_db(d):
-    """
-    Write/overwrite a database entry
+# region worker utilities
 
-    :param d: dict. RenderRequest object presented as a dictionary
+Worker = Query()
+
+
+def get_worker(name):
+    """Get worker info by name"""
+    return _workers.get(Worker.name == name)
+
+
+def get_all_workers():
+    """Get all registered workers"""
+    return _workers.all()
+
+
+def upsert_worker(data):
+    """Insert or update worker data"""
+    _workers.upsert(data, Worker.name == data['name'])
+
+
+def remove_worker(name):
+    """Remove a worker from the database"""
+    _workers.remove(Worker.name == name)
+
+# endregion
+
+
+# region error utilities
+
+def log_error(worker_name, job_uid, message):
     """
-    uid = d['uid']
-    LOGGER.info('writing to %s', uid)
-    with open(os.path.join(DATABASE, '{}.json'.format(uid)), 'w') as fp:
-        json.dump(d, fp, indent=4)
+    Log an error to the database.
+
+    :param worker_name: str. name of the worker that encountered the error
+    :param job_uid: str. UID of the job (optional, can be None)
+    :param message: str. error message
+    """
+    _errors.insert({
+        'timestamp': datetime.now().isoformat(),
+        'worker': worker_name,
+        'job_uid': job_uid,
+        'message': message
+    })
+
+
+def get_recent_errors(limit=20):
+    """
+    Get recent errors, most recent first.
+
+    :param limit: int. maximum number of errors to return
+    :return: list of error dicts
+    """
+    all_errors = _errors.all()
+    # Sort by timestamp descending and limit
+    sorted_errors = sorted(all_errors, key=lambda e: e.get('timestamp', ''), reverse=True)
+    return sorted_errors[:limit]
+
+
+def clear_errors():
+    """Clear all errors from the database"""
+    _errors.truncate()
 
 # endregion

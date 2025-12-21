@@ -11,6 +11,10 @@
     <div class="container">
         <h1>Render Farm</h1>
 
+        <div class="summary-bar" hx-get="/partials/summary" hx-trigger="load, every 5s" hx-swap="innerHTML">
+            {% include 'partials/summary.html' %}
+        </div>
+
         <div hx-get="/partials/workers" hx-trigger="load, every 5s" hx-swap="innerHTML">
             {% include 'partials/workers.html' %}
         </div>
@@ -20,6 +24,10 @@
 
         <div hx-get="/partials/jobs" hx-trigger="load, every 3s" hx-swap="innerHTML">
             {% include 'partials/jobs.html' %}
+        </div>
+
+        <div hx-get="/partials/errors" hx-trigger="load, every 10s" hx-swap="innerHTML">
+            {% include 'partials/errors.html' %}
         </div>
     </div>
 </body>

@@ -3,10 +3,39 @@
     {% if workers %}
     <div class="workers-grid">
         {% for worker in workers %}
-        <div class="worker-card {{ 'online' if worker.online else 'offline' }}">
-            <div class="worker-status">{{ 'Online' if worker.online else 'Offline' }}</div>
-            <div class="worker-name">{{ worker.name }}</div>
-            <div class="worker-activity">{{ worker.status }}</div>
+        <div class="worker-card {{ 'online' if worker.online else 'offline' }} {{ 'rendering' if worker.status == 'rendering' else '' }}">
+            <div class="worker-header">
+                <div class="worker-status-dot {{ 'online' if worker.online else 'offline' }}"></div>
+                <div class="worker-name">{{ worker.name }}</div>
+            </div>
+            <div class="worker-activity">
+                {% if worker.status == 'rendering' and worker.current_job %}
+                Rendering: {{ worker.current_job[:8] }}...
+                {% elif worker.status == 'idle' %}
+                Idle
+                {% else %}
+                {{ worker.status or 'Unknown' }}
+                {% endif %}
+            </div>
+            {% if worker.online and (worker.cpu_percent is not none or worker.memory_percent is not none) %}
+            <div class="worker-metrics">
+                {% if worker.cpu_percent is not none %}
+                <span class="metric">
+                    <span class="metric-label">CPU</span>
+                    <span class="metric-value {{ 'high' if worker.cpu_percent > 80 else '' }}">{{ worker.cpu_percent|round(0)|int }}%</span>
+                </span>
+                {% endif %}
+                {% if worker.memory_percent is not none %}
+                <span class="metric">
+                    <span class="metric-label">RAM</span>
+                    <span class="metric-value {{ 'high' if worker.memory_percent > 80 else '' }}">{{ worker.memory_percent|round(0)|int }}%</span>
+                </span>
+                {% endif %}
+            </div>
+            {% endif %}
+            {% if not worker.online and worker.last_seen %}
+            <div class="worker-last-seen">Last seen: {{ worker.last_seen[:19] }}</div>
+            {% endif %}
         </div>
         {% endfor %}
     </div>

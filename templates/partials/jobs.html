@@ -13,42 +13,67 @@
             <tr>
                 <th>UID</th>
                 <th>Name</th>
-                <th>Owner</th>
                 <th>Worker</th>
                 <th>Status</th>
-                <th>Warmup</th>
                 <th>Progress</th>
-                <th>Time Estimate</th>
+                <th>ETA</th>
                 <th>Actions</th>
             </tr>
         </thead>
         <tbody>
             {% for job in requests %}
-            <tr>
-                <td>{{ job.uid }}</td>
+            <tr class="job-row status-{{ job.status|replace(' ', '-') }}">
+                <td class="job-uid">{{ job.uid }}</td>
                 <td>{{ job.name }}</td>
-                <td>{{ job.owner }}</td>
                 <td>{{ job.worker or '-' }}</td>
-                <td>{{ job.status }}</td>
                 <td>
-                    {% if job.warmup_total > 0 %}
-                    {{ job.warmup_current }}/{{ job.warmup_total }}
+                    <span class="status-badge {{ job.status|replace(' ', '-') }}">
+                        {{ job.status }}
+                        {% if job.retry_count and job.retry_count > 0 %}
+                        <span class="retry-count">({{ job.retry_count }})</span>
+                        {% endif %}
+                    </span>
+                    {% if job.error_message %}
+                    <div class="error-detail" title="{{ job.error_message }}">
+                        {{ job.error_message[:50] }}{% if job.error_message|length > 50 %}...{% endif %}
+                    </div>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if job.status == 'in progress' %}
+                    <div class="progressContainer">
+                        <div class="progressBar" style="width: {{ job.progress }}%">{{ job.progress }}%</div>
+                    </div>
+                    {% if job.warmup_total and job.warmup_total > 0 and job.progress == 0 %}
+                    <div class="warmup-info">Warmup: {{ job.warmup_current }}/{{ job.warmup_total }}</div>
+                    {% endif %}
+                    {% elif job.status == 'finished' %}
+                    <span class="completed-text">100%</span>
                     {% else %}
                     -
                     {% endif %}
                 </td>
                 <td>
-                    <div class="progressContainer">
-                        <div class="progressBar" style="width: {{ job.progress }}%">{{ job.progress }}%</div>
-                    </div>
+                    {% if job.status == 'in progress' %}
+                    {{ job.time_estimate or 'Calculating...' }}
+                    {% elif job.completed_at %}
+                    Completed {{ job.completed_at[:10] }}
+                    {% else %}
+                    -
+                    {% endif %}
                 </td>
-                <td>{{ job.time_estimate or '-' }}</td>
-                <td>
-                    {% if job.status not in ['finished', 'cancelled'] %}
+                <td class="actions">
+                    {% if job.status in ['errored', 'cancelled'] %}
+                    <button class="btn-retry"
+                            hx-post="/api/retry/{{ job.uid }}"
+                            hx-swap="none">Retry</button>
+                    {% endif %}
+                    {% if job.status not in ['finished', 'cancelled', 'failed'] %}
                     <button class="btn-cancel"
                             hx-post="/api/cancel/{{ job.uid }}"
                             hx-swap="none">Cancel</button>
-                    {% else %}
+                    {% endif %}
+                    {% if job.status in ['finished', 'cancelled', 'failed', 'errored'] %}
                     <button class="btn-delete"
                             hx-delete="/api/delete/{{ job.uid }}"
                             hx-target="closest tr"

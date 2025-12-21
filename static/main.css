@@ -7,13 +7,13 @@ body {
 }
 
 .container {
-    max-width: 1200px;
+    max-width: 1400px;
     margin: 0 auto;
 }
 
 h1 {
     color: #009879;
-    margin-bottom: 30px;
+    margin-bottom: 20px;
 }
 
 h2 {
@@ -21,10 +21,13 @@ h2 {
     font-size: 14px;
     text-transform: uppercase;
     margin-bottom: 15px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
 }
 
 section {
-    margin-bottom: 40px;
+    margin-bottom: 30px;
 }
 
 .no-data {
@@ -32,6 +35,45 @@ section {
     font-style: italic;
 }
 
+/* Summary Bar */
+.summary-bar {
+    background: #16213e;
+    border-radius: 8px;
+    padding: 15px 25px;
+    margin-bottom: 25px;
+    border-left: 4px solid #009879;
+}
+
+.summary-stats {
+    display: flex;
+    gap: 40px;
+    flex-wrap: wrap;
+}
+
+.stat-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.stat-label {
+    color: #888;
+    font-size: 12px;
+    text-transform: uppercase;
+}
+
+.stat-value {
+    font-size: 14px;
+}
+
+.stat-online { color: #009879; font-weight: bold; }
+.stat-total { color: #888; }
+.stat-done { color: #009879; }
+.stat-rendering { color: #3498db; }
+.stat-queued { color: #888; }
+.stat-error { color: #e74c3c; font-weight: bold; }
+
+/* Workers Grid */
 .workers-grid {
     display: flex;
     gap: 15px;
@@ -50,33 +92,90 @@ section {
     border-left-color: #009879;
 }
 
+.worker-card.online.rendering {
+    border-left-color: #3498db;
+}
+
 .worker-card.offline {
     border-left-color: #e74c3c;
     opacity: 0.6;
 }
 
-.worker-status {
-    font-size: 11px;
-    text-transform: uppercase;
-    color: #009879;
-    margin-bottom: 5px;
+.worker-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
 }
 
-.worker-card.offline .worker-status {
-    color: #e74c3c;
+.worker-status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #666;
+}
+
+.worker-status-dot.online {
+    background: #009879;
+    box-shadow: 0 0 6px rgba(0, 152, 121, 0.6);
+}
+
+.worker-status-dot.offline {
+    background: #e74c3c;
 }
 
 .worker-name {
     font-size: 16px;
     font-weight: bold;
-    margin-bottom: 5px;
 }
 
 .worker-activity {
     font-size: 12px;
     color: #888;
+    margin-bottom: 10px;
 }
 
+.worker-card.rendering .worker-activity {
+    color: #3498db;
+}
+
+.worker-metrics {
+    display: flex;
+    gap: 15px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid #2a2a4a;
+}
+
+.metric {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.metric-label {
+    font-size: 10px;
+    color: #666;
+    text-transform: uppercase;
+}
+
+.metric-value {
+    font-size: 14px;
+    font-weight: bold;
+    color: #888;
+}
+
+.metric-value.high {
+    color: #e74c3c;
+}
+
+.worker-last-seen {
+    font-size: 11px;
+    color: #666;
+    margin-top: 8px;
+}
+
+/* Projects Grid */
 .projects-grid {
     display: flex;
     gap: 15px;
@@ -142,6 +241,7 @@ section {
     cursor: default;
 }
 
+/* Jobs Table */
 table {
     border-collapse: collapse;
     border: none;
@@ -158,6 +258,7 @@ th {
     text-align: left;
     height: 30px;
     text-transform: uppercase;
+    font-size: 12px;
 }
 
 th, td {
@@ -180,58 +281,227 @@ td {
     color: #ccc;
 }
 
+.job-uid {
+    font-family: monospace;
+    font-size: 12px;
+    color: #888;
+}
+
+/* Status Badges */
+.status-badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 11px;
+    text-transform: uppercase;
+    font-weight: bold;
+}
+
+.status-badge.unassigned { background: #2a2a4a; color: #888; }
+.status-badge.ready_to_start { background: #2a4a6a; color: #5dade2; }
+.status-badge.in-progress { background: #1a4a3a; color: #00b894; }
+.status-badge.finished { background: #1a4a2a; color: #27ae60; }
+.status-badge.errored { background: #4a2a2a; color: #e74c3c; }
+.status-badge.failed { background: #4a1a1a; color: #c0392b; }
+.status-badge.cancelled { background: #4a4a2a; color: #f39c12; }
+.status-badge.paused { background: #3a3a4a; color: #9b59b6; }
+
+.retry-count {
+    font-size: 10px;
+    opacity: 0.8;
+}
+
+.error-detail {
+    font-size: 11px;
+    color: #e74c3c;
+    margin-top: 5px;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.warmup-info {
+    font-size: 11px;
+    color: #888;
+    margin-top: 4px;
+}
+
+.completed-text {
+    color: #27ae60;
+    font-weight: bold;
+}
+
+/* Progress Bar */
 .progressContainer {
-  width: 100%;
-  background-color: #2a2a4a;
+    width: 100%;
+    background-color: #2a2a4a;
+    border-radius: 4px;
+    overflow: hidden;
 }
 
 .progressBar {
-  height: 30px;
-  background-color: #009879;
-  text-align: center; /* To center it horizontally (if you want) */
-  line-height: 30px; /* To center it vertically */
-  color: white;
+    height: 24px;
+    background-color: #009879;
+    text-align: center;
+    line-height: 24px;
+    color: white;
+    font-size: 12px;
+    font-weight: bold;
+    transition: width 0.3s ease;
 }
 
-.btn-cancel, .btn-delete {
-  padding: 6px 12px;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 12px;
+/* Action Buttons */
+.actions {
+    white-space: nowrap;
+}
+
+.btn-cancel, .btn-delete, .btn-retry {
+    padding: 6px 12px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    margin-right: 4px;
 }
 
 .btn-cancel {
-  background: #e74c3c;
-  color: white;
+    background: #e74c3c;
+    color: white;
 }
 
 .btn-cancel:hover {
-  background: #c0392b;
+    background: #c0392b;
 }
 
 .btn-delete {
-  background: #666;
-  color: white;
+    background: #666;
+    color: white;
 }
 
 .btn-delete:hover {
-  background: #888;
+    background: #888;
+}
+
+.btn-retry {
+    background: #3498db;
+    color: white;
+}
+
+.btn-retry:hover {
+    background: #2980b9;
 }
 
 .btn-delete-all {
-  padding: 4px 10px;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 11px;
-  background: #e74c3c;
-  color: white;
-  margin-left: 10px;
-  text-transform: none;
-  font-weight: normal;
+    padding: 4px 10px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 11px;
+    background: #e74c3c;
+    color: white;
+    text-transform: none;
+    font-weight: normal;
 }
 
 .btn-delete-all:hover {
-  background: #c0392b;
+    background: #c0392b;
+}
+
+/* Errors Panel */
+.errors-section {
+    margin-top: 30px;
+}
+
+.errors-panel {
+    background: #16213e;
+    border-radius: 8px;
+    padding: 15px 20px;
+    border-left: 4px solid #e74c3c;
+}
+
+.errors-panel summary {
+    cursor: pointer;
+    user-select: none;
+}
+
+.errors-panel summary h2 {
+    display: inline-flex;
+    margin: 0;
+}
+
+.error-count {
+    background: #e74c3c;
+    color: white;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 12px;
+    font-weight: normal;
+}
+
+.errors-list {
+    margin-top: 15px;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.error-item {
+    background: #1a1a2e;
+    border-radius: 4px;
+    padding: 12px;
+    margin-bottom: 10px;
+    border-left: 3px solid #e74c3c;
+}
+
+.error-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+
+.error-worker {
+    font-weight: bold;
+    color: #ccc;
+}
+
+.error-time {
+    font-size: 11px;
+    color: #666;
+}
+
+.error-message {
+    color: #e74c3c;
+    font-size: 13px;
+    word-break: break-word;
+}
+
+.error-job {
+    font-size: 11px;
+    color: #888;
+    margin-top: 8px;
+}
+
+.btn-clear-errors {
+    margin-top: 10px;
+    padding: 6px 12px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    background: #666;
+    color: white;
+}
+
+.btn-clear-errors:hover {
+    background: #888;
+}
+
+/* Row Status Colors */
+.job-row.status-errored,
+.job-row.status-failed {
+    background-color: rgba(231, 76, 60, 0.1);
+}
+
+.job-row.status-in-progress {
+    background-color: rgba(0, 152, 121, 0.05);
 }

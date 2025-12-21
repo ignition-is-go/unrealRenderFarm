@@ -1,0 +1,32 @@
+<section class="errors-section">
+    <details class="errors-panel">
+        <summary>
+            <h2>Recent Errors
+                {% if errors %}
+                <span class="error-count">{{ errors|length }}</span>
+                {% endif %}
+            </h2>
+        </summary>
+        {% if errors %}
+        <div class="errors-list">
+            {% for error in errors %}
+            <div class="error-item">
+                <div class="error-header">
+                    <span class="error-worker">{{ error.worker or 'Unknown' }}</span>
+                    <span class="error-time">{{ error.timestamp[:19] if error.timestamp else '' }}</span>
+                </div>
+                <div class="error-message">{{ error.message }}</div>
+                {% if error.job_uid %}
+                <div class="error-job">Job: {{ error.job_uid }}</div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        <button class="btn-clear-errors" hx-delete="/api/errors" hx-swap="none" hx-confirm="Clear all errors?">
+            Clear All
+        </button>
+        {% else %}
+        <p class="no-data">No recent errors</p>
+        {% endif %}
+    </details>
+</section>

@@ -1,14 +1,27 @@
 """
-MRQ executor for command-line rendering with server callbacks
+MRQ executor for command-line rendering with server callbacks.
+
+Hardened for production with:
+- Error handling around all Unreal API calls
+- HTTP failure tolerance (continues render if server unreachable)
+- Error message capture and reporting
 """
 
 import json
 import os
+import time
 import unreal
 
 
 # Server URL from environment variable
 SERVER_API_URL = os.environ.get('RENDER_SERVER_URL', 'http://127.0.0.1:5000') + '/api'
+
+# Throttle progress updates (seconds between updates)
+PROGRESS_UPDATE_INTERVAL = 5.0
+
+# Maximum HTTP failures before giving up on updates
+MAX_HTTP_FAILURES = 5
+
 unreal.log("=== MyExecutor module loaded ===")
 unreal.log("  SERVER_API_URL: {}".format(SERVER_API_URL))
 
@@ -19,8 +32,6 @@ def fix_asset_path(path):
 
     WRONG:  /Game/Path/Asset         (loads Package, not the asset!)
     RIGHT:  /Game/Path/Asset.Asset   (loads the actual asset)
-
-    To get the correct path in Unreal Editor: Right-click asset -> "Copy Object Path"
     """
     if path and '.' not in path.split('/')[-1]:
         asset_name = path.split('/')[-1]
@@ -39,6 +50,10 @@ class MyExecutor(unreal.MoviePipelinePythonHostExecutor):
         self.pipeline = None
         self.queue = None
         self.job_id = None
+        self._last_update_time = 0.0
+        self._last_progress = -1.0
+        self._http_failures = 0
+        self._error_message = None
 
         # Register HTTP response callback
         self.http_response_recieved_delegate.add_function_unique(
@@ -48,59 +63,111 @@ class MyExecutor(unreal.MoviePipelinePythonHostExecutor):
 
     @unreal.ufunction(override=True)
     def execute_delayed(self, queue):
-        # Parse commandline
-        (cmd_tokens, cmd_switches, cmd_parameters) = unreal.SystemLibrary.\
-            parse_command_line(unreal.SystemLibrary.get_command_line())
+        """Initialize and start the render pipeline."""
+        try:
+            # Parse commandline
+            (cmd_tokens, cmd_switches, cmd_parameters) = unreal.SystemLibrary.\
+                parse_command_line(unreal.SystemLibrary.get_command_line())
 
-        map_path = fix_asset_path(cmd_tokens[0])
-        seq_path = fix_asset_path(cmd_parameters.get('LevelSequence', ''))
-        preset_path = fix_asset_path(cmd_parameters.get('MoviePipelineConfig', ''))
-        self.job_id = cmd_parameters.get('JobId', '')
+            if not cmd_tokens:
+                self._fail("No map specified in command line")
+                return
 
-        unreal.log("=== MyExecutor: Job {} ===".format(self.job_id))
-        unreal.log("  Map: {}".format(map_path))
-        unreal.log("  Sequence: {}".format(seq_path))
-        unreal.log("  Config: {}".format(preset_path))
+            map_path = fix_asset_path(cmd_tokens[0])
+            seq_path = fix_asset_path(cmd_parameters.get('LevelSequence', ''))
+            preset_path = fix_asset_path(cmd_parameters.get('MoviePipelineConfig', ''))
+            self.job_id = cmd_parameters.get('JobId', '')
 
-        # Load preset
-        preset_soft = unreal.SoftObjectPath(preset_path)
-        u_preset = unreal.SystemLibrary.conv_soft_obj_path_to_soft_obj_ref(preset_soft)
+            unreal.log("=== MyExecutor: Job {} ===".format(self.job_id))
+            unreal.log("  Map: {}".format(map_path))
+            unreal.log("  Sequence: {}".format(seq_path))
+            unreal.log("  Config: {}".format(preset_path))
 
-        if not u_preset:
-            unreal.log_error("FAILED to load preset: {}".format(preset_path))
-            self.send_status_update(0, 'N/A', 'error')
-            return
+            if not seq_path:
+                self._fail("No LevelSequence specified")
+                return
 
-        # Initialize pipeline
-        self.pipeline = unreal.new_object(
-            self.target_pipeline_class,
-            outer=self.get_last_loaded_world(),
-            base_type=unreal.MoviePipeline
-        )
+            if not preset_path:
+                self._fail("No MoviePipelineConfig specified")
+                return
 
-        # Initialize queue with single job
-        self.queue = unreal.new_object(unreal.MoviePipelineQueue, outer=self)
-        job = self.queue.allocate_new_job(unreal.MoviePipelineExecutorJob)
-        job.map = unreal.SoftObjectPath(map_path)
-        job.sequence = unreal.SoftObjectPath(seq_path)
-        job.set_configuration(u_preset)
+            # Load preset
+            try:
+                preset_soft = unreal.SoftObjectPath(preset_path)
+                u_preset = unreal.SystemLibrary.conv_soft_obj_path_to_soft_obj_ref(preset_soft)
+            except Exception as e:
+                self._fail("Failed to load preset path: {}".format(e))
+                return
 
-        # Register finished callback
-        self.pipeline.on_movie_pipeline_work_finished_delegate.add_function_unique(
-            self, "on_movie_pipeline_finished"
-        )
+            if not u_preset:
+                self._fail("Preset not found: {}".format(preset_path))
+                return
 
-        self.pipeline.initialize(job)
-        unreal.log("Pipeline initialized, rendering...")
+            # Initialize pipeline
+            try:
+                self.pipeline = unreal.new_object(
+                    self.target_pipeline_class,
+                    outer=self.get_last_loaded_world(),
+                    base_type=unreal.MoviePipeline
+                )
+            except Exception as e:
+                self._fail("Failed to create pipeline: {}".format(e))
+                return
 
-        # Send initial status
-        self.send_status_update(0, 'Starting...', 'in progress')
+            # Initialize queue with single job
+            try:
+                self.queue = unreal.new_object(unreal.MoviePipelineQueue, outer=self)
+                job = self.queue.allocate_new_job(unreal.MoviePipelineExecutorJob)
+                job.map = unreal.SoftObjectPath(map_path)
+                job.sequence = unreal.SoftObjectPath(seq_path)
+                job.set_configuration(u_preset)
+            except Exception as e:
+                self._fail("Failed to configure job: {}".format(e))
+                return
+
+            # Register finished callback
+            self.pipeline.on_movie_pipeline_work_finished_delegate.add_function_unique(
+                self, "on_movie_pipeline_finished"
+            )
+
+            try:
+                self.pipeline.initialize(job)
+            except Exception as e:
+                self._fail("Failed to initialize pipeline: {}".format(e))
+                return
+
+            unreal.log("Pipeline initialized, rendering...")
+
+            # Send initial status
+            self.send_status_update(0, 'Starting...', 'in progress')
+
+        except Exception as e:
+            self._fail("Unexpected error in execute_delayed: {}".format(e))
+
+    def _fail(self, error_message):
+        """Handle a fatal error - report to server and exit."""
+        unreal.log_error("FATAL: {}".format(error_message))
+        self._error_message = error_message
+        self.send_status_update(0, 'N/A', 'errored', error_message=error_message)
+        self.pipeline = None
+        self.on_executor_finished_impl()
 
     @unreal.ufunction(ret=None, params=[unreal.MoviePipelineOutputData])
     def on_movie_pipeline_finished(self, results):
         """Called when render is complete"""
-        unreal.log("Render finished! Success: {}".format(results.success))
-        self.send_status_update(100, 'N/A', 'finished')
+        try:
+            success = results.success if results else False
+            unreal.log("Render finished! Success: {}".format(success))
+
+            if success:
+                self.send_status_update(100, 'N/A', 'finished')
+            else:
+                error_msg = self._error_message or "Render failed (unknown reason)"
+                self.send_status_update(100, 'N/A', 'errored', error_message=error_msg)
+
+        except Exception as e:
+            unreal.log_error("Error in on_movie_pipeline_finished: {}".format(e))
+
         self.pipeline = None
         self.on_executor_finished_impl()
 
@@ -111,42 +178,88 @@ class MyExecutor(unreal.MoviePipelinePythonHostExecutor):
 
     @unreal.ufunction(override=True)
     def on_begin_frame(self):
-        """Called every frame - send progress updates"""
-        super(MyExecutor, self).on_begin_frame()
+        """Called every frame - send throttled progress updates"""
+        try:
+            super(MyExecutor, self).on_begin_frame()
 
-        if not self.pipeline:
-            return
+            if not self.pipeline:
+                return
 
-        # Get progress
-        progress = 100 * unreal.MoviePipelineLibrary.get_completion_percentage(self.pipeline)
+            # Get progress
+            try:
+                progress = 100 * unreal.MoviePipelineLibrary.get_completion_percentage(self.pipeline)
+            except Exception:
+                progress = 0
 
-        # Get time estimate
-        time_estimate = unreal.MoviePipelineLibrary.get_estimated_time_remaining(self.pipeline)
-        if time_estimate:
-            days, hours, minutes, seconds, _ = time_estimate.to_tuple()
-            time_str = '{}h:{}m:{}s'.format(hours, minutes, seconds)
-        else:
-            time_str = 'Calculating...'
+            # Get time estimate
+            try:
+                time_estimate = unreal.MoviePipelineLibrary.get_estimated_time_remaining(self.pipeline)
+                if time_estimate:
+                    days, hours, minutes, seconds, _ = time_estimate.to_tuple()
+                    time_str = '{}h:{}m:{}s'.format(hours, minutes, seconds)
+                else:
+                    time_str = 'Calculating...'
+            except Exception:
+                time_str = 'Unknown'
 
-        # Get engine warm up frame count
-        warmup_current, warmup_total = unreal.MoviePipelineBlueprintLibrary.get_engine_warm_up_frame_count(self.pipeline, 0)
+            # Get engine warm up frame count
+            try:
+                warmup_current, warmup_total = unreal.MoviePipelineBlueprintLibrary.get_engine_warm_up_frame_count(self.pipeline, 0)
+            except Exception:
+                warmup_current, warmup_total = 0, 0
 
-        if progress == 0:
-            unreal.log("Engine Warm Up Frame {}/{}".format(warmup_current, warmup_total))
-        else:
-            unreal.log("Progress: {:.1f}% ETA: {}".format(progress, time_str))
+            # Throttle updates
+            current_time = time.time()
+            time_since_update = current_time - self._last_update_time
+            progress_delta = abs(progress - self._last_progress)
 
-        self.send_status_update(progress, time_str, 'in progress', warmup_current, warmup_total)
+            should_update = (
+                self._last_progress < 0 or
+                time_since_update >= PROGRESS_UPDATE_INTERVAL or
+                progress_delta >= 5.0
+            )
+
+            if progress == 0:
+                unreal.log("Engine Warm Up Frame {}/{}".format(warmup_current, warmup_total))
+            else:
+                unreal.log("Progress: {:.1f}% ETA: {}".format(progress, time_str))
+
+            if should_update:
+                self._last_update_time = current_time
+                self._last_progress = progress
+                self.send_status_update(progress, time_str, 'in progress', warmup_current, warmup_total)
+
+        except Exception as e:
+            unreal.log_warning("Error in on_begin_frame: {}".format(e))
 
     @unreal.ufunction(ret=None, params=[int, int, str])
     def on_http_response(self, index, code, message):
-        """HTTP response callback"""
-        unreal.log("HTTP response: {} {}".format(code, message[:50] if message else ""))
+        """HTTP response callback - track failures"""
+        try:
+            if code >= 200 and code < 300:
+                # Success - reset failure counter
+                self._http_failures = 0
+            else:
+                self._http_failures += 1
+                unreal.log_warning("HTTP error {} (failure {}/{}): {}".format(
+                    code, self._http_failures, MAX_HTTP_FAILURES,
+                    message[:100] if message else ""
+                ))
 
-    def send_status_update(self, progress, time_estimate, status, warmup_current=0, warmup_total=0):
+                if self._http_failures >= MAX_HTTP_FAILURES:
+                    unreal.log_warning("Server unreachable - continuing render without updates")
+        except Exception as e:
+            unreal.log_warning("Error in on_http_response: {}".format(e))
+
+    def send_status_update(self, progress, time_estimate, status,
+                           warmup_current=0, warmup_total=0, error_message=None):
         """Send status update to render server"""
         if not self.job_id:
             unreal.log_warning("send_status_update: no job_id set!")
+            return
+
+        # Skip if too many failures (server probably down)
+        if self._http_failures >= MAX_HTTP_FAILURES and status not in ('finished', 'errored'):
             return
 
         url = '{}/put/{}'.format(SERVER_API_URL, self.job_id)
@@ -157,10 +270,18 @@ class MyExecutor(unreal.MoviePipelinePythonHostExecutor):
             'warmup_current': warmup_current,
             'warmup_total': warmup_total
         }
+        if error_message:
+            data['error_message'] = error_message
+
         body = json.dumps(data)
 
         headers = unreal.Map(str, str)
         headers['Content-Type'] = 'application/json'
 
-        unreal.log("HTTP PUT {} -> {}".format(url, body))
-        self.send_http_request(url, "PUT", body, headers)
+        unreal.log("HTTP PUT {} -> {}".format(url, body[:100]))
+
+        try:
+            self.send_http_request(url, "PUT", body, headers)
+        except Exception as e:
+            unreal.log_warning("Failed to send HTTP request: {}".format(e))
+            self._http_failures += 1
