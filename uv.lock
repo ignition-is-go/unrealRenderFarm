@@ -473,6 +473,12 @@ dev = [
     { name = "pytest-mock" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "hypothesis" },
+    { name = "pytest" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "flask", specifier = ">=3.1.2" },
@@ -487,6 +493,12 @@ requires-dist = [
     { name = "tinydb", specifier = ">=4.8.2" },
 ]
 provides-extras = ["dev"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "hypothesis", specifier = ">=6.148.7" },
+    { name = "pytest", specifier = ">=9.0.2" },
+]
 
 [[package]]
 name = "urllib3"

@@ -25,3 +25,9 @@ dev = [
 testpaths = ["tests"]
 addopts = "-v --tb=short"
 filterwarnings = ["ignore::DeprecationWarning"]
+
+[dependency-groups]
+dev = [
+    "hypothesis>=6.148.7",
+    "pytest>=9.0.2",
+]

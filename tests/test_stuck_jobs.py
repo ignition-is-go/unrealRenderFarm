@@ -9,7 +9,7 @@ import pytest
 from datetime import datetime, timedelta
 
 from util.renderRequest import RenderStatus, RenderRequest, upsert_worker
-from requestManager import check_stuck_jobs, WORKER_TIMEOUT, JOB_TIMEOUT
+from requestManager import check_stuck_jobs, WORKER_TIMEOUT
 
 
 class TestStuckJobDetection:
@@ -96,37 +96,18 @@ class TestStuckJobDetection:
         assert RenderRequest.from_db(job_finished.uid).status == RenderStatus.finished
         assert RenderRequest.from_db(job_errored.uid).status == RenderStatus.errored
 
-    def test_job_exceeding_timeout_is_reset(
+    def test_long_running_job_with_online_worker_is_not_reset(
         self, isolated_database, create_job, register_worker
     ):
-        """Jobs that exceed JOB_TIMEOUT should be reset even with online worker."""
+        """Long-running jobs should not be reset as long as worker is online."""
         register_worker('online-node', status='rendering')
 
-        # Create job that started long ago
-        old_start = (datetime.now() - timedelta(seconds=JOB_TIMEOUT + 100)).isoformat()
+        # Create job that started hours ago - should still not be reset
+        old_start = (datetime.now() - timedelta(hours=5)).isoformat()
         job = create_job(
             status=RenderStatus.in_progress,
             worker='online-node',
             started_at=old_start
-        )
-
-        check_stuck_jobs()
-
-        reloaded = RenderRequest.from_db(job.uid)
-        assert reloaded.status == RenderStatus.ready_to_start
-
-    def test_job_within_timeout_is_not_reset(
-        self, isolated_database, create_job, register_worker
-    ):
-        """Jobs within timeout should not be reset."""
-        register_worker('online-node', status='rendering')
-
-        # Create job that started recently
-        recent_start = (datetime.now() - timedelta(seconds=60)).isoformat()
-        job = create_job(
-            status=RenderStatus.in_progress,
-            worker='online-node',
-            started_at=recent_start
         )
 
         check_stuck_jobs()

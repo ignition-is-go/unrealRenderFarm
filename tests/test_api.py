@@ -151,8 +151,9 @@ class TestCancelAndRetry:
         response = client.post('/api/cancel/nonexistent123')
         assert response.status_code == 404
 
-    def test_retry_errored_job(self, client, create_job):
+    def test_retry_errored_job(self, client, create_job, register_worker):
         """POST /api/retry/<uid> should retry errored jobs."""
+        register_worker('node-01', status='idle')
         job = create_job(status=RenderStatus.errored)
 
         response = client.post(f'/api/retry/{job.uid}')
@@ -160,8 +161,9 @@ class TestCancelAndRetry:
         assert response.json['status'] == RenderStatus.ready_to_start
         assert response.json['retry_count'] == 1
 
-    def test_retry_cancelled_job(self, client, create_job):
+    def test_retry_cancelled_job(self, client, create_job, register_worker):
         """POST /api/retry/<uid> should work for cancelled jobs."""
+        register_worker('node-01', status='idle')
         job = create_job(status=RenderStatus.cancelled)
 
         response = client.post(f'/api/retry/{job.uid}')

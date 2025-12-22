@@ -9,8 +9,11 @@ Hardened for production with:
 """
 
 import atexit
+import glob
+import json
 import logging
 import os
+import re
 import threading
 import time
 from datetime import datetime
@@ -30,7 +33,6 @@ LOGGER = logging.getLogger(__name__)
 
 # Configuration
 WORKER_TIMEOUT = int(os.environ.get('WORKER_TIMEOUT', '30'))  # seconds
-JOB_TIMEOUT = int(os.environ.get('JOB_TIMEOUT', '1800'))  # 30 minutes default
 LAST_ASSIGNED_WORKER = None
 
 # Valid state transitions for job state machine
@@ -82,48 +84,117 @@ def index_page():
     return render_template('index.html', requests=jsons, workers=workers)
 
 
+# region Project Management
+
+PROJECTS_DIR = os.path.join(MODULE_PATH, 'projects')
+
+
+def get_sequence_name(seq_path):
+    """Extract display name from Unreal sequence path."""
+    return seq_path.rstrip('/').split('/')[-1].split('.')[0]
+
+
+def load_project(filename):
+    """
+    Safely load a project JSON file with path traversal protection.
+
+    Returns (project_dict, None) on success, or (None, error_tuple) on failure.
+    """
+    # Sanitize filename
+    safe_name = os.path.basename(filename)
+    if not re.match(r'^[\w\-]+\.json$', safe_name):
+        return None, ({'error': 'invalid project filename'}, 400)
+
+    project_path = os.path.join(PROJECTS_DIR, safe_name)
+
+    # Verify path stays inside projects directory
+    if not os.path.realpath(project_path).startswith(os.path.realpath(PROJECTS_DIR)):
+        return None, ({'error': 'invalid project path'}, 400)
+
+    if not os.path.exists(project_path):
+        return None, ({'error': 'project not found'}, 404)
+
+    try:
+        with open(project_path) as f:
+            project = json.load(f)
+    except json.JSONDecodeError as e:
+        LOGGER.error('Invalid JSON in %s: %s', safe_name, e)
+        return None, ({'error': 'invalid project JSON'}, 400)
+
+    # Validate schema
+    required = ['name', 'map', 'config', 'sequences']
+    missing = [f for f in required if f not in project]
+    if missing:
+        return None, ({'error': f'missing fields: {missing}'}, 400)
+
+    project['_file'] = safe_name
+    return project, None
+
+
+def submit_sequences(project, sequences):
+    """
+    Submit render jobs for the given sequences.
+
+    Returns list of created job UIDs.
+    """
+    submitted = []
+    for seq in sequences:
+        rrequest = renderRequest.RenderRequest.from_dict({
+            'name': get_sequence_name(seq),
+            'umap_path': project['map'],
+            'useq_path': seq,
+            'uconfig_path': project['config'],
+        })
+        rrequest.write_json()
+        new_request_trigger(rrequest)
+        submitted.append(rrequest.uid)
+    return submitted
+
+
 @app.get('/partials/projects')
 def partials_projects():
-    """List available project configs"""
-    import glob
-    import json as json_module
-    project_files = glob.glob(os.path.join(MODULE_PATH, 'projects', '*.json'))
+    """List available project configs for the submission UI."""
     projects = []
-    for pf in project_files:
-        with open(pf) as f:
-            data = json_module.load(f)
-            data['_file'] = os.path.basename(pf)
-            projects.append(data)
+    for filepath in glob.glob(os.path.join(PROJECTS_DIR, '*.json')):
+        project, _ = load_project(os.path.basename(filepath))
+        if project:
+            projects.append(project)
     return render_template('partials/projects.html', projects=projects)
 
 
 @app.post('/api/submit/<project_file>')
-def submit_project(project_file):
-    """Submit all sequences from a project"""
-    import json as json_module
-    project_path = os.path.join(MODULE_PATH, 'projects', project_file)
-    if not os.path.exists(project_path):
-        return {'error': 'project not found'}, 404
+def api_submit_all(project_file):
+    """Submit all sequences from a project."""
+    project, error = load_project(project_file)
+    if error:
+        return error
 
-    with open(project_path) as f:
-        project = json_module.load(f)
-
-    submitted = []
-    for seq in project['sequences']:
-        seq_name = seq.rstrip('/').split('/')[-1].split('.')[0]
-        data = {
-            'name': seq_name,
-            'umap_path': project['map'],
-            'useq_path': seq,
-            'uconfig_path': project['config'],
-        }
-        rrequest = renderRequest.RenderRequest.from_dict(data)
-        rrequest.write_json()
-        new_request_trigger(rrequest)
-        submitted.append(rrequest.uid)
-
+    submitted = submit_sequences(project, project['sequences'])
     LOGGER.info('Submitted %d jobs from %s', len(submitted), project_file)
-    return {'submitted': submitted}
+    return {'submitted': submitted, 'count': len(submitted)}
+
+
+@app.post('/api/submit-selected/<project_file>')
+def api_submit_selected(project_file):
+    """Submit selected sequences from a project."""
+    project, error = load_project(project_file)
+    if error:
+        return error
+
+    selected = request.form.getlist('sequences')
+    if not selected:
+        return {'error': 'no sequences selected'}, 400
+
+    # Filter to only valid sequences from this project
+    valid = [seq for seq in selected if seq in project['sequences']]
+    if not valid:
+        return {'error': 'no valid sequences selected'}, 400
+
+    submitted = submit_sequences(project, valid)
+    LOGGER.info('Submitted %d/%d jobs from %s', len(submitted), len(selected), project_file)
+    return {'submitted': submitted, 'count': len(submitted)}
+
+# endregion
 
 
 @app.get('/partials/workers')
@@ -508,14 +579,7 @@ def check_stuck_jobs():
             elif not worker.get('online'):
                 is_stuck = True
                 reason = f'worker {rr.worker} is offline'
-            elif rr.started_at:
-                try:
-                    started = datetime.fromisoformat(rr.started_at)
-                    if (now - started).total_seconds() > JOB_TIMEOUT:
-                        is_stuck = True
-                        reason = f'job exceeded {JOB_TIMEOUT}s timeout'
-                except (ValueError, TypeError):
-                    pass
+            # Worker is online and assigned - job is running normally
         else:
             is_stuck = True
             reason = 'no worker assigned'

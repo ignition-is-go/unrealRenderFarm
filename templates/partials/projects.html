@@ -1,28 +1,35 @@
 <section class="projects-section">
-    <h2>Projects</h2>
+    <h2>Submit Jobs</h2>
     {% if projects %}
-    <div class="projects-grid">
-        {% for project in projects %}
-        <div class="project-card">
-            <div class="project-name">{{ project.name }}</div>
-            <div class="project-info">{{ project.sequences|length }} sequences</div>
-            <div class="project-sequences">
-                {% for seq in project.sequences[:5] %}
-                <span class="seq-tag">{{ seq }}</span>
-                {% endfor %}
-                {% if project.sequences|length > 5 %}
-                <span class="seq-more">+{{ project.sequences|length - 5 }} more</span>
-                {% endif %}
-            </div>
-            <button class="submit-btn"
-                    hx-post="/api/submit/{{ project._file }}"
-                    hx-swap="none"
-                    hx-on::after-request="this.classList.add('submitted'); this.innerText='Submitted!'">
-                Submit All
-            </button>
+    {% for project in projects %}
+    <div class="project-card">
+        <div class="project-header">
+            <span class="project-name">{{ project.name }}</span>
+            <span class="project-info">{{ project.sequences|length }} sequences</span>
         </div>
-        {% endfor %}
+
+        <form class="sequence-form" hx-post="/api/submit-selected/{{ project._file }}" hx-swap="none"
+              hx-on::after-request="if(event.detail.successful) { this.reset(); this.querySelectorAll('input:checked').forEach(c => c.checked = false); }">
+            <div class="sequence-controls">
+                <label class="select-all">
+                    <input type="checkbox" onchange="this.closest('form').querySelectorAll('.seq-checkbox').forEach(c => c.checked = this.checked)">
+                    Select All
+                </label>
+                <button type="submit" class="btn-submit">Submit Selected</button>
+            </div>
+
+            <div class="sequence-list">
+                {% for seq in project.sequences %}
+                {% set seq_name = seq.rstrip('/').split('/')[-1].split('.')[0] %}
+                <label class="sequence-item">
+                    <input type="checkbox" name="sequences" value="{{ seq }}" class="seq-checkbox">
+                    <span class="seq-name">{{ seq_name }}</span>
+                </label>
+                {% endfor %}
+            </div>
+        </form>
     </div>
+    {% endfor %}
     {% else %}
     <p class="no-data">No projects found in /projects/*.json</p>
     {% endif %}
