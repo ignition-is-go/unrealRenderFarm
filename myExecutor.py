@@ -210,12 +210,6 @@ class MyExecutor(unreal.MoviePipelinePythonHostExecutor):
             except Exception:
                 time_str = 'Unknown'
 
-            # Get engine warm up frame count
-            try:
-                warmup_current, warmup_total = unreal.MoviePipelineBlueprintLibrary.get_engine_warm_up_frame_count(self.pipeline, 0)
-            except Exception:
-                warmup_current, warmup_total = 0, 0
-
             # Throttle updates
             current_time = time.time()
             time_since_update = current_time - self._last_update_time
@@ -228,14 +222,14 @@ class MyExecutor(unreal.MoviePipelinePythonHostExecutor):
             )
 
             if progress == 0:
-                unreal.log("Engine Warm Up Frame {}/{}".format(warmup_current, warmup_total))
+                unreal.log("Initializing...")
             else:
                 unreal.log("Progress: {:.1f}% ETA: {}".format(progress, time_str))
 
             if should_update:
                 self._last_update_time = current_time
                 self._last_progress = progress
-                self.send_status_update(progress, time_str, 'in progress', warmup_current, warmup_total)
+                self.send_status_update(progress, time_str, 'in progress')
 
         except Exception as e:
             unreal.log_warning("Error in on_begin_frame: {}".format(e))
@@ -259,8 +253,7 @@ class MyExecutor(unreal.MoviePipelinePythonHostExecutor):
         except Exception as e:
             unreal.log_warning("Error in on_http_response: {}".format(e))
 
-    def send_status_update(self, progress, time_estimate, status,
-                           warmup_current=0, warmup_total=0, error_message=None):
+    def send_status_update(self, progress, time_estimate, status, error_message=None):
         """Send status update to render server"""
         if not self.job_id:
             unreal.log_warning("send_status_update: no job_id set!")
@@ -278,9 +271,7 @@ class MyExecutor(unreal.MoviePipelinePythonHostExecutor):
         data = {
             'progress': progress,
             'time_estimate': time_estimate,
-            'status': status,
-            'warmup_current': warmup_current,
-            'warmup_total': warmup_total
+            'status': status
         }
         if error_message:
             data['error_message'] = error_message

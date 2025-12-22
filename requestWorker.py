@@ -48,6 +48,7 @@ def log_output(pipe, prefix='UE'):
         r'HTTP PUT',
         r'SERVER_API_URL',
         r'Progress:.*%',
+        r'Initializing',
         r'Render finished',
         r'LogPython: Error',
         r'LogPython: Warning',

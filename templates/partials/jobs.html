@@ -41,11 +41,12 @@
                 </td>
                 <td>
                     {% if job.status == 'in progress' %}
+                    {% if job.progress == 0 %}
+                    <span class="initializing-text">Initializing...</span>
+                    {% else %}
                     <div class="progressContainer">
                         <div class="progressBar" style="width: {{ job.progress }}%">{{ job.progress }}%</div>
                     </div>
-                    {% if job.warmup_total and job.warmup_total > 0 and job.progress == 0 %}
-                    <div class="warmup-info">Warmup: {{ job.warmup_current }}/{{ job.warmup_total }}</div>
                     {% endif %}
                     {% elif job.status == 'finished' %}
                     <span class="completed-text">100%</span>
