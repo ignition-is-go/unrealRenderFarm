@@ -62,7 +62,7 @@
                     {{ job.time_estimate or 'Calculating...' }}
                     {% endif %}
                     {% elif job.completed_at %}
-                    Completed {{ job.completed_at[:10] }}
+                    {{ job.completed_at[:19] }}
                     {% else %}
                     -
                     {% endif %}
