@@ -17,7 +17,7 @@ import unreal
 SERVER_API_URL = os.environ.get('RENDER_SERVER_URL', 'http://127.0.0.1:5000') + '/api'
 
 # Throttle progress updates (seconds between updates)
-PROGRESS_UPDATE_INTERVAL = 5.0
+PROGRESS_UPDATE_INTERVAL = 2.0
 
 # Maximum HTTP failures before giving up on updates
 MAX_HTTP_FAILURES = 5
@@ -218,7 +218,7 @@ class MyExecutor(unreal.MoviePipelinePythonHostExecutor):
             should_update = (
                 self._last_progress < 0 or
                 time_since_update >= PROGRESS_UPDATE_INTERVAL or
-                progress_delta >= 5.0
+                progress_delta >= 2.0
             )
 
             if progress == 0:

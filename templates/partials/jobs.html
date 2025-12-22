@@ -42,7 +42,7 @@
                 <td>
                     {% if job.status == 'in progress' %}
                     {% if job.progress == 0 %}
-                    <span class="initializing-text">Initializing...</span>
+                    <span class="starting-text">Starting...</span>
                     {% else %}
                     <div class="progressContainer">
                         <div class="progressBar" style="width: {{ job.progress }}%">{{ job.progress }}%</div>
@@ -56,7 +56,11 @@
                 </td>
                 <td>
                     {% if job.status == 'in progress' %}
+                    {% if job.progress == 0 %}
+                    -
+                    {% else %}
                     {{ job.time_estimate or 'Calculating...' }}
+                    {% endif %}
                     {% elif job.completed_at %}
                     Completed {{ job.completed_at[:10] }}
                     {% else %}
